@@ -1,8 +1,9 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=C0200,R0902,R0912,R0913,R0914,R0915,R1716,W0611,W0612,W0613,W0221
+from __future__ import annotations
 
 from enum import IntEnum
-from typing import List
 
 import numpy as np
 
@@ -15,8 +16,8 @@ class IntMap(dict):  # type: ignore
         self.added_keys = []
 
     def emplace(self, key, value):
-        if not isinstance(key, int):
-            raise TypeError(f"key must be a NGramPart not {type(key)}.")
+        if not isinstance(key, (int, str)):
+            raise TypeError(f"key must be a int or str not {type(key)}.")
         if not isinstance(value, NgramPart):
             raise TypeError(f"value must be a NGramPart not {type(value)}.")
         if key not in self:
@@ -63,7 +64,7 @@ class NgramPart:
     def __repr__(self):
         if self.empty():
             return f"NgramPart({self.id_})"
-        return f"NgramPart({self.id_}, {repr(self.leafs_)})"
+        return f"NgramPart({self.id_}, {self.leafs_!r})"
 
     def empty(self):
         return self._leafs_ is None
@@ -92,10 +93,10 @@ class NgramPart:
 
 
 class WeightingCriteria(IntEnum):
-    kNone = 0
-    kTF = 1
-    kIDF = 2
-    kTFIDF = 3
+    NONE = 0
+    TF = 1
+    IDF = 2
+    TFIDF = 3
 
 
 def populate_grams(
@@ -130,11 +131,11 @@ class TfIdfVectorizer(OpRun):
         mode = self.mode  # type: ignore
 
         if mode == "TF":
-            self.weighting_criteria_ = WeightingCriteria.kTF
+            self.weighting_criteria_ = WeightingCriteria.TF
         elif mode == "IDF":
-            self.weighting_criteria_ = WeightingCriteria.kIDF
+            self.weighting_criteria_ = WeightingCriteria.IDF
         elif mode == "TFIDF":
-            self.weighting_criteria_ = WeightingCriteria.kTFIDF
+            self.weighting_criteria_ = WeightingCriteria.TFIDF
 
         self.min_gram_length_ = self.min_gram_length  # type: ignore
         self.max_gram_length_ = self.max_gram_length  # type: ignore
@@ -145,16 +146,16 @@ class TfIdfVectorizer(OpRun):
         self.output_size_ = max(self.ngram_indexes_) + 1
         self.weights_ = self.weights  # type: ignore
         self.pool_int64s_ = self.pool_int64s  # type: ignore
+        self.pool_strings_ = self.pool_strings  # type: ignore
 
         self.int64_map_ = NgramPart(-10)
         self.int64_map_.init()
 
-        total_items = len(self.pool_int64s_)
+        total_items = len(self.pool_int64s_ or self.pool_strings_)
         ngram_id = 1  # start with 1, 0 - means no n-gram
         # Load into dictionary only required gram sizes
         ngram_size = 1
         for i in range(len(self.ngram_counts_)):
-
             start_idx = self.ngram_counts_[i]
             end_idx = (
                 self.ngram_counts_[i + 1]
@@ -169,7 +170,7 @@ class TfIdfVectorizer(OpRun):
                     and ngram_size <= self.max_gram_length_
                 ):
                     ngram_id = populate_grams(
-                        self.pool_int64s_,
+                        self.pool_int64s_ or self.pool_strings_,
                         start_idx,
                         ngrams,
                         ngram_size,
@@ -181,7 +182,7 @@ class TfIdfVectorizer(OpRun):
             ngram_size += 1
 
     def increment_count(
-        self, ngram_id: int, row_num: int, frequencies: List[int]
+        self, ngram_id: int, row_num: int, frequencies: list[int]
     ) -> None:
         ngram_id -= 1
         # assert(ngram_id < ngram_indexes_.size());
@@ -189,8 +190,8 @@ class TfIdfVectorizer(OpRun):
         # assert(static_cast<size_t>(output_idx) < frequencies.size());
         frequencies[output_idx] += 1
 
-    def output_result(self, B: int, frequencies: List[int]) -> np.ndarray:
-        l_output_dims: List[int] = []
+    def output_result(self, B: int, frequencies: list[int]) -> np.ndarray:
+        l_output_dims: list[int] = []
         if B == 0:
             l_output_dims.append(self.output_size_)
             B = 1
@@ -205,12 +206,10 @@ class TfIdfVectorizer(OpRun):
         Y = np.empty((total_dims,), dtype=np.float32)
 
         w = self.weights_
-        if self.weighting_criteria_ == WeightingCriteria.kTF:
-            i = 0
-            for f in frequencies:
+        if self.weighting_criteria_ == WeightingCriteria.TF:
+            for i, f in enumerate(frequencies):
                 Y[i] = f
-                i += 1
-        elif self.weighting_criteria_ == WeightingCriteria.kIDF:
+        elif self.weighting_criteria_ == WeightingCriteria.IDF:
             if len(w) > 0:
                 p = 0
                 for _batch in range(B):
@@ -222,7 +221,7 @@ class TfIdfVectorizer(OpRun):
                 for f in frequencies:
                     Y[p] = 1 if f > 0 else 0
                     p += 1
-        elif self.weighting_criteria_ == WeightingCriteria.kTFIDF:
+        elif self.weighting_criteria_ == WeightingCriteria.TFIDF:
             if len(w) > 0:
                 p = 0
                 for _batch in range(B):
@@ -243,18 +242,17 @@ class TfIdfVectorizer(OpRun):
         X: np.ndarray,
         row_num: int,
         row_size: int,
-        frequencies: List[int],
+        frequencies: list[int],
         max_gram_length=None,
         max_skip_count=None,
         min_gram_length=None,
-        mode=None,
-        ngram_counts=None,
-        ngram_indexes=None,
-        pool_int64s=None,
-        pool_strings=None,
-        weights=None,
+        mode=None,  # noqa: ARG002
+        ngram_counts=None,  # noqa: ARG002
+        ngram_indexes=None,  # noqa: ARG002
+        pool_int64s=None,  # noqa: ARG002
+        pool_strings=None,  # noqa: ARG002
+        weights=None,  # noqa: ARG002
     ) -> None:
-
         if len(X.shape) > 1:
             X_flat = X[row_num]
         else:
@@ -359,14 +357,14 @@ class TfIdfVectorizer(OpRun):
             # TfidfVectorizer returns a zero tensor of shape
             # {b_dim, output_size} when b_dim is the number of received observations
             # and output_size the is the maximum value in ngram_indexes attribute plus 1.
-            return self.output_result(B, frequencies)
+            return (self.output_result(B, frequencies),)  # type: ignore[arg-type]
 
         def fn(row_num):
             self.compute_impl(
                 X,
                 row_num,
                 C,
-                frequencies,
+                frequencies,  # type: ignore[arg-type]
                 max_gram_length=max_gram_length,
                 max_skip_count=max_skip_count,
                 min_gram_length=min_gram_length,
@@ -382,4 +380,4 @@ class TfIdfVectorizer(OpRun):
         for i in range(num_rows):
             fn(i)
 
-        return (self.output_result(B, frequencies),)
+        return (self.output_result(B, frequencies),)  # type: ignore[arg-type]

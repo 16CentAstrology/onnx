@@ -1,10 +1,12 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
-from ._op import OpRunUnaryNum
+from onnx.reference.op_run import OpRun
 
 
-class Identity(OpRunUnaryNum):
+class Identity(OpRun):
     def _run(self, a):  # type: ignore
         if a is None:
             return (None,)

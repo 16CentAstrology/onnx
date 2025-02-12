@@ -1,7 +1,9 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,W0221
+# Copyright (c) ONNX Project Contributors
 
-from ._op_run_training import OpRunTraining
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+from onnx.reference.ops.aionnx_preview_training._op_run_training import OpRunTraining
 
 
 def _apply_momentum(r, t, x, g, v, norm_coefficient, alpha, beta):  # type: ignore
@@ -46,7 +48,7 @@ class Momentum(OpRunTraining):
         n = (len(data) - 2) // 3
         xs = []
         vs = []
-        for i in range(0, n):
+        for i in range(n):
             a, b = self._run1(  # type: ignore
                 *data[:2],
                 data[2 + i],
@@ -61,7 +63,18 @@ class Momentum(OpRunTraining):
             vs.append(b)
         return tuple(xs + vs)
 
-    def _run1(self, r, t, x, g, v, mode="standard", norm_coefficient=None, alpha=None, beta=None):  # type: ignore
+    def _run1(
+        self,
+        r,
+        t,
+        x,
+        g,
+        v,
+        mode="standard",
+        norm_coefficient=None,
+        alpha=None,
+        beta=None,
+    ):  # type: ignore
         if mode == "standard":
             x_new, v_new = _apply_momentum(r, t, x, g, v, norm_coefficient, alpha, beta)
         else:

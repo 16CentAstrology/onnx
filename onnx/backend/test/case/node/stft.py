@@ -1,12 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
-
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class STFT(Base):
@@ -33,6 +34,7 @@ class STFT(Base):
             complex_out = np.fft.fft(signal[0, start:stop, 0])[0:onesided_length]
             output[0, i] = np.stack((complex_out.real, complex_out.imag), axis=1)
 
+        output = output.astype(signal.dtype)
         expect(node, inputs=[signal, step, length], outputs=[output], name="test_stft")
 
         node = onnx.helper.make_node(
@@ -45,7 +47,7 @@ class STFT(Base):
         a0 = 0.5
         a1 = 0.5
         window = a0 + a1 * np.cos(
-            2 * 3.1415 * np.arange(0, length, 1, dtype=np.float32) / length
+            2 * np.pi * np.arange(0, length, 1, dtype=np.float32) / length
         )
         nstfts = 1 + (signal.shape[1] - window.shape[0]) // step
 
@@ -58,6 +60,8 @@ class STFT(Base):
                 0:onesided_length
             ]
             output[0, i] = np.stack((complex_out.real, complex_out.imag), axis=1)
+        window = window.astype(signal.dtype)
+        output = output.astype(signal.dtype)
         expect(
             node,
             inputs=[signal, step, window],

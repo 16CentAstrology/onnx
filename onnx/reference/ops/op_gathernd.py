@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Tuple
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
@@ -10,7 +10,7 @@ from onnx.reference.op_run import OpRun
 
 def _gather_nd_impl(
     data: np.ndarray, indices: np.ndarray, batch_dims: int
-) -> Tuple[np.ndarray]:
+) -> tuple[np.ndarray]:
     # Note the data rank - will be reused multiple times later
     data_rank = len(data.shape)
 
@@ -49,7 +49,7 @@ def _gather_nd_impl(
     for batch_dim in range(reshaped_indices.shape[0]):
         for outer_dim in range(reshaped_indices.shape[1]):
             gather_index = tuple(reshaped_indices[batch_dim][outer_dim])
-            output_data_buffer.append(reshaped_data[(batch_dim,) + gather_index])
+            output_data_buffer.append(reshaped_data[(batch_dim, *gather_index)])
     return (np.asarray(output_data_buffer, dtype=data.dtype).reshape(output_shape),)
 
 

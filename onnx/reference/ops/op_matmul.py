@@ -1,14 +1,15 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
 import numpy as np
 
-from ._op import OpRunBinaryNum
+from onnx.reference.ops._op import OpRunBinaryNum
 
 
 def numpy_matmul(a, b):  # type: ignore
-    """
-    Implements a matmul product. See :func:`np.matmul`.
+    """Implements a matmul product. See :func:`np.matmul`.
     Handles sparse matrices.
     """
     try:

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Tuple
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
@@ -14,7 +14,7 @@ def _layer_normalization(
     B: np.ndarray,
     axis: int = -1,
     epsilon: float = 1e-5,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     X_shape = X.shape
     X_rank = len(X_shape)
     if axis < 0:

@@ -1,5 +1,7 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
 import numpy as np
 
@@ -27,5 +29,5 @@ class SpaceToDepth(OpRun):
             H // blocksize,
             W // blocksize,
         )
-        y = np.reshape(transposed, finalshape)
+        y = np.reshape(transposed, finalshape).astype(data.dtype)
         return (y,)

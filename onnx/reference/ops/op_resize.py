@@ -1,16 +1,17 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=C0123,C3001,R0912,R0913,R0914,R1730,W0221,W0613
+# Copyright (c) ONNX Project Contributors
 
-from typing import Any, Callable, List, Optional
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+from typing import Any, Callable
 
 import numpy as np
 
 from onnx.reference.op_run import OpRun
 
 
-def _cartesian(arrays: List[np.ndarray], out: np.ndarray = None) -> np.ndarray:
-    """
-    From https://stackoverflow.com/a/1235363
+def _cartesian(arrays: list[np.ndarray], out: np.ndarray | None = None) -> np.ndarray:
+    """From https://stackoverflow.com/a/1235363
     Generate a cartesian product of input arrays.
     Parameters
     ----------
@@ -18,12 +19,14 @@ def _cartesian(arrays: List[np.ndarray], out: np.ndarray = None) -> np.ndarray:
         1-D arrays to form the cartesian product of.
     out : ndarray
         Array to place the cartesian product in.
-    Returns
+
+    Returns:
     -------
     out : ndarray
         2-D array of shape (M, len(arrays)) containing cartesian products
         formed of input arrays.
-    Examples
+
+    Examples:
     --------
     >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
     array([[1, 4, 6],
@@ -39,7 +42,6 @@ def _cartesian(arrays: List[np.ndarray], out: np.ndarray = None) -> np.ndarray:
            [3, 5, 6],
            [3, 5, 7]])
     """
-
     arrays = [np.asarray(x) for x in arrays]
     dtype = arrays[0].dtype
 
@@ -56,8 +58,10 @@ def _cartesian(arrays: List[np.ndarray], out: np.ndarray = None) -> np.ndarray:
     return out
 
 
-def _nearest_coeffs(ratio: float, mode: str = "round_prefer_floor") -> np.ndarray:
-    if type(ratio) == int or ratio.is_integer():
+def _nearest_coeffs(
+    ratio: float | int | np.ndarray, mode: str = "round_prefer_floor"
+) -> np.ndarray:
+    if isinstance(ratio, int) or ratio.is_integer():
         return np.array([0, 1])
     if mode == "round_prefer_floor":
         return np.array([ratio <= 0.5, ratio > 0.5])
@@ -70,8 +74,10 @@ def _nearest_coeffs(ratio: float, mode: str = "round_prefer_floor") -> np.ndarra
     raise ValueError(f"Unexpected value {mode!r}.")
 
 
-def _cubic_coeffs(ratio: float, scale: float, A: float = -0.75) -> np.ndarray:
-    # scale is unused
+def _cubic_coeffs(
+    ratio: float, scale: float | None = None, A: float = -0.75
+) -> np.ndarray:
+    del scale  # Unused
     coeffs = [
         ((A * (ratio + 1) - 5 * A) * (ratio + 1) + 8 * A) * (ratio + 1) - 4 * A,
         ((A + 2) * ratio - (A + 3)) * ratio * ratio + 1,
@@ -84,10 +90,10 @@ def _cubic_coeffs(ratio: float, scale: float, A: float = -0.75) -> np.ndarray:
 
 
 def _cubic_coeffs_antialias(ratio: float, scale: float, A: float = -0.75) -> np.ndarray:
-    if scale > 1.0:  # Antialias is applied when downsampling
-        scale = 1.0
+    # Antialias is applied when downsampling
+    scale = min(scale, 1.0)
 
-    def W(x: float) -> float:
+    def compute_coeff(x: float) -> float:
         x = abs(x)
         x_2 = x * x
         x_3 = x * x_2
@@ -100,28 +106,28 @@ def _cubic_coeffs_antialias(ratio: float, scale: float, A: float = -0.75) -> np.
     i_start = int(np.floor(-2 / scale) + 1)
     i_end = 2 - i_start
     args = [scale * (i - ratio) for i in range(i_start, i_end)]
-    coeffs = [W(x) for x in args]
+    coeffs = [compute_coeff(x) for x in args]
     return np.array(coeffs) / sum(coeffs)
 
 
-def _linear_coeffs(ratio: float, scale: float) -> np.ndarray:
-    # scale is unused
+def _linear_coeffs(ratio: float, scale: float | None = None) -> np.ndarray:
+    del scale  # unused
     return np.array([1 - ratio, ratio])
 
 
 def _linear_coeffs_antialias(ratio: float, scale: float) -> np.ndarray:
-    if scale > 1.0:  # Antialias is applied when downsampling
-        scale = 1.0
+    # Antialias is applied when downsampling
+    scale = min(scale, 1.0)
+
     start = int(np.floor(-1 / scale) + 1)
     footprint = 2 - 2 * start
     args = (np.arange(start, start + footprint) - ratio) * scale
     coeffs = np.clip(1 - np.abs(args), 0, 1)
-    return np.array(coeffs) / sum(coeffs)
+    return np.array(coeffs) / sum(coeffs)  # type: ignore[no-any-return]
 
 
 def _get_neighbor_idxes(x: float, n: int, limit: int) -> np.ndarray:
-    """
-    Return the n nearest indexes to x among `[0, limit)`,
+    """Return the n nearest indexes to x among `[0, limit)`,
     prefer the indexes smaller than x.
     As a result, the ratio must be in `(0, 1]`.
 
@@ -135,27 +141,32 @@ def _get_neighbor_idxes(x: float, n: int, limit: int) -> np.ndarray:
         get_neighbor_idxes(4.4, 1, 10) == [4]
         get_neighbor_idxes(4.6, 1, 10) == [5]
 
-    :param x:
-    :param n: the number of the wanted indexes
-    :param limit: the maximum value of index
-    :return: An np.array containing n nearest indexes in ascending order
+    Args:
+        x: float.
+        n: the number of the wanted indexes.
+        limit: the maximum value of index.
+
+    Returns:
+        An np.array containing n nearest indexes in ascending order
     """
     idxes = sorted(range(limit), key=lambda idx: (abs(x - idx), idx))[:n]
     idxes = sorted(idxes)
     return np.array(idxes)
 
 
-def _get_neighbor(x: float, n: int, data: np.ndarray) -> np.ndarray:
-    """
-    Pad `data` in 'edge' mode, and get n nearest elements in the padded array
-    and their indexes in the original array.
+def _get_neighbor(x: float, n: int, data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Pad `data` in 'edge' mode, and get n nearest elements in the padded array and their indexes in the original array.
 
-    :param x: center index (in the unpadded coordinate system) of the found nearest elements.
-    :param n: the number of neighbors.
-    :param data: the array
-    :return: A tuple containing the indexes of neighbor elements
-        (the index can be smaller than 0 or higher than len(data))
-        and the value of these elements
+    Args:
+        x: Center index (in the unpadded coordinate system) of the found
+            nearest elements.
+        n: The number of neighbors.
+        data: The array.
+
+    Returns:
+        A tuple containing the indexes of neighbor elements (the index
+        can be smaller than 0 or higher than len(data)) and the value of
+        these elements.
     """
     pad_width = np.ceil(n / 2).astype(int)
     padded = np.pad(data, pad_width, mode="edge")
@@ -169,14 +180,14 @@ def _get_neighbor(x: float, n: int, data: np.ndarray) -> np.ndarray:
 def _interpolate_1d_with_x(
     data: np.ndarray,
     scale_factor: float,
+    output_width_int: int,
     x: float,
     get_coeffs: Callable[[float, float], np.ndarray],
-    roi: np.ndarray = None,
+    roi: np.ndarray | None = None,
     extrapolation_value: float = 0.0,
     coordinate_transformation_mode: str = "half_pixel",
     exclude_outside: bool = False,
 ) -> np.ndarray:
-
     input_width = len(data)
     output_width = scale_factor * input_width
     if coordinate_transformation_mode == "align_corners":
@@ -187,6 +198,8 @@ def _interpolate_1d_with_x(
     elif coordinate_transformation_mode == "asymmetric":
         x_ori = x / scale_factor
     elif coordinate_transformation_mode == "tf_crop_and_resize":
+        if roi is None:
+            raise ValueError("roi cannot be None.")
         if output_width == 1:
             x_ori = (roi[1] - roi[0]) * (input_width - 1) / 2
         else:
@@ -194,7 +207,7 @@ def _interpolate_1d_with_x(
         x_ori += roi[0] * (input_width - 1)
         # Return extrapolation_value directly as what TF CropAndResize does
         if x_ori < 0 or x_ori > input_width - 1:
-            return extrapolation_value
+            return np.array(extrapolation_value)
     elif coordinate_transformation_mode == "pytorch_half_pixel":
         if output_width == 1:
             x_ori = -0.5
@@ -202,6 +215,14 @@ def _interpolate_1d_with_x(
             x_ori = (x + 0.5) / scale_factor - 0.5
     elif coordinate_transformation_mode == "half_pixel":
         x_ori = (x + 0.5) / scale_factor - 0.5
+    elif coordinate_transformation_mode == "half_pixel_symmetric":
+        # Maps the center of the implicit ROI to the center of the output canvas.
+        # The difference with `half_pixel` will be only relevant
+        # when output_width_int != output_width
+        adjustment = output_width_int / output_width
+        center = input_width / 2
+        offset = center * (1 - adjustment)
+        x_ori = offset + (x + 0.5) / scale_factor - 0.5
     else:
         raise ValueError(
             f"Invalid coordinate_transformation_mode: {coordinate_transformation_mode!r}."
@@ -225,16 +246,17 @@ def _interpolate_1d_with_x(
                 coeffs[i] = 0
         coeffs /= sum(coeffs)
 
-    return np.dot(coeffs, points).item()
+    return np.dot(coeffs, points).item()  # type: ignore[no-any-return]
 
 
 def _interpolate_nd_with_x(
     data: np.ndarray,
     n: int,
-    scale_factors: List[float],
-    x: List[float],
+    scale_factors: list[float],
+    output_size: list[int],
+    x: list[float],
     get_coeffs: Callable[[float, float], np.ndarray],
-    roi: np.ndarray = None,
+    roi: np.ndarray | None = None,
     exclude_outside: bool = False,
     **kwargs: Any,
 ) -> np.ndarray:
@@ -242,6 +264,7 @@ def _interpolate_nd_with_x(
         return _interpolate_1d_with_x(
             data,
             scale_factors[0],
+            output_size[0],
             x[0],
             get_coeffs,
             roi=roi,
@@ -254,6 +277,7 @@ def _interpolate_nd_with_x(
             data[i],
             n - 1,
             scale_factors[1:],
+            output_size[1:],
             x[1:],
             get_coeffs,
             roi=None if roi is None else np.concatenate([roi[1:n], roi[n + 1 :]]),
@@ -263,33 +287,37 @@ def _interpolate_nd_with_x(
         res1d.append(r)
 
     return _interpolate_1d_with_x(
-        res1d,
+        res1d,  # type: ignore[arg-type]  # FIXME
         scale_factors[0],
+        output_size[0],
         x[0],
         get_coeffs,
-        roi=None if roi is None else [roi[0], roi[n]],
+        roi=None if roi is None else [roi[0], roi[n]],  # type: ignore[arg-type]  # FIXME
         exclude_outside=exclude_outside,
         **kwargs,
     )
 
 
 def _get_all_coords(data: np.ndarray) -> np.ndarray:
-    return _cartesian([list(range(data.shape[i])) for i in range(len(data.shape))])
+    # FIXME: Fix input type
+    return _cartesian(
+        [list(range(data.shape[i])) for i in range(len(data.shape))]  # type: ignore[arg-type,misc]
+    )
 
 
 def _interpolate_nd(
     data: np.ndarray,
     get_coeffs: Callable[[float, float], np.ndarray],
-    output_size: Optional[List[int]] = None,
-    scale_factors: Optional[List[float]] = None,
-    axes: Optional[List[int]] = None,
-    roi: np.ndarray = None,
-    keep_aspect_ratio_policy: Optional[str] = "stretch",
+    output_size: list[int] | None = None,
+    scale_factors: list[float] | None = None,
+    axes: list[int] | None = None,
+    roi: np.ndarray | None = None,
+    keep_aspect_ratio_policy: str | None = "stretch",
     exclude_outside: bool = False,
     **kwargs: Any,
 ) -> np.ndarray:
-
-    assert output_size is not None or scale_factors is not None
+    if output_size is None and scale_factors is None:
+        raise ValueError("output_size is None and scale_factors is None.")
 
     r = len(data.shape)
     if axes is not None:
@@ -311,7 +339,7 @@ def _interpolate_nd(
             for i, d in enumerate(axes):
                 new_roi[d] = roi[i]
                 new_roi[r + d] = roi[naxes + i]
-            roi = new_roi
+            roi = new_roi  # type: ignore[assignment]  # FIXME
     else:
         axes = list(range(r))
 
@@ -338,9 +366,12 @@ def _interpolate_nd(
             ]
 
     else:
-        output_size = (scale_factors * np.array(data.shape)).astype(int)
+        output_size = (scale_factors * np.array(data.shape)).astype(int)  # type: ignore[union-attr]
 
-    assert scale_factors is not None
+    if scale_factors is None:
+        raise ValueError("scale_factors is None.")
+    if output_size is None:
+        raise ValueError("output_size is None.")
 
     ret = np.zeros(output_size)
     for x in _get_all_coords(ret):
@@ -348,6 +379,7 @@ def _interpolate_nd(
             data,
             len(data.shape),
             scale_factors,
+            output_size,
             x,
             get_coeffs,
             roi=roi,
@@ -371,23 +403,28 @@ class Resize(OpRun):
         exclude_outside=None,
         extrapolation_value=None,
         keep_aspect_ratio_policy=None,
-        mode=None,
+        mode: str | None = None,
         nearest_mode=None,
     ):
-        if mode == "nearest":  # type: ignore
+        if mode == "nearest":
             if antialias:
                 raise RuntimeError(
                     f"antilias={antialias!r} is not supported for mode={mode!r}."
                 )
             if nearest_mode is not None:
-                fct = lambda x, scale_factor: _nearest_coeffs(  # noqa
-                    x, mode=nearest_mode
-                )
+
+                def fct(x, scale_factor):
+                    del scale_factor  # unused
+                    return _nearest_coeffs(x, mode=nearest_mode)
+
             else:
                 fct = _nearest_coeffs
         elif mode == "cubic":
             fct_ = _cubic_coeffs_antialias if antialias else _cubic_coeffs
-            fct = lambda x, scale: fct_(x, scale, A=cubic_coeff_a)  # noqa
+
+            def fct(x, scale):
+                return fct_(x, scale, A=cubic_coeff_a)
+
         elif mode == "linear":
             fct = _linear_coeffs_antialias if antialias else _linear_coeffs
         else:
@@ -411,7 +448,7 @@ class Resize(OpRun):
         not_axes = [a for a in range(len(X.shape)) if a not in axes]
         perm = tuple(not_axes + axes)
         permuted = np.transpose(X, perm)
-        new_shape = (-1,) + tuple(X.shape[a] for a in axes)
+        new_shape = (-1, *tuple(X.shape[a] for a in axes))
         reshaped = permuted.reshape(new_shape)
         res = None
         for i in range(reshaped.shape[0]):
@@ -427,10 +464,10 @@ class Resize(OpRun):
                 extrapolation_value=extrapolation_value,  # type: ignore
             ).astype(X.dtype)
             if res is None:
-                res = np.empty((reshaped.shape[0],) + output.shape, dtype=output.dtype)
+                res = np.empty((reshaped.shape[0], *output.shape), dtype=output.dtype)
             res[i] = output
 
-        res_reshaped = res.reshape((tuple(X.shape[a] for a in not_axes) + res[0].shape))  # type: ignore
+        res_reshaped = res.reshape(tuple(X.shape[a] for a in not_axes) + res[0].shape)  # type: ignore
         new_perm = list(perm)
         for i, a in enumerate(perm):
             new_perm[a] = i

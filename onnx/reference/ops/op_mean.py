@@ -1,5 +1,7 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
 from onnx.reference.op_run import OpRun
 
@@ -9,4 +11,4 @@ class Mean(OpRun):
         res = args[0].copy()
         for m in args[1:]:
             res += m
-        return (res / len(args),)
+        return ((res / len(args)).astype(args[0].dtype),)

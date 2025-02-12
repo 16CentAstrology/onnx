@@ -1,11 +1,12 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,W0221
+from __future__ import annotations
 
 import numpy as np
 
 from onnx.reference.op_run import OpRun
-
-from .op_conv import _conv_implementation
+from onnx.reference.ops.op_conv import _conv_implementation
 
 
 class QLinearConv(OpRun):
@@ -35,15 +36,32 @@ class QLinearConv(OpRun):
         strides = strides or self.strides  # type: ignore
 
         X = x.astype(np.int32)
-        if x_zero_point:
+        if x_zero_point is not None:
             X -= x_zero_point
         W = w.astype(np.int32)
-        if w_zero_point:
-            W -= w_zero_point
+        if w_zero_point is not None:
+            if len(w_zero_point.shape) == 1 and w_zero_point.shape[0] == W.shape[0]:
+                missing = (w_zero_point.shape[0],) + (1,) * (len(W.shape) - 1)
+                W -= w_zero_point.reshape(missing)
+            else:
+                W -= w_zero_point
 
         res = _conv_implementation(
             X, W, B, auto_pad, dilations, group, kernel_shape, pads, strides
         ).astype(np.int32)
+
+        # w_scale could be a scalar or a 1-D tensor. A 1-D tensor means a per
+        # output channel quantization.
+        if np.size(w_scale) > 1:
+            if np.ndim(w_scale) != 1:
+                raise ValueError(
+                    f"w_scale must be a scalar or a 1-D tensor. Got shape {np.shape(w_scale)}."
+                )
+            if np.size(w_scale) != np.shape(w)[0]:
+                raise ValueError(
+                    f"w_scale elements must match output channels: {np.size(w_scale)} != {np.shape(w)[0]}"
+                )
+            w_scale = np.expand_dims(w_scale, (0, 2, 3))
 
         R = res * (x_scale * w_scale / y_scale)
         if y_zero_point is not None:

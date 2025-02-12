@@ -1,12 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
-
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class HannWindow(Base):
@@ -21,10 +22,10 @@ class HannWindow(Base):
         size = np.int32(10)
         a0 = 0.5
         a1 = 0.5
-        y = a0 - a1 * np.cos(
-            2 * 3.1415 * np.arange(0, size, 1, dtype=np.float32) / size
+        y = a0 - a1 * np.cos(2 * np.pi * np.arange(0, size, 1, dtype=np.float32) / size)
+        expect(
+            node, inputs=[size], outputs=[y.astype(np.float32)], name="test_hannwindow"
         )
-        expect(node, inputs=[size], outputs=[y], name="test_hannwindow")
 
         # Test symmetric window
         node = onnx.helper.make_node(
@@ -34,6 +35,11 @@ class HannWindow(Base):
         a0 = 0.5
         a1 = 0.5
         y = a0 - a1 * np.cos(
-            2 * 3.1415 * np.arange(0, size, 1, dtype=np.float32) / (size - 1)
+            2 * np.pi * np.arange(0, size, 1, dtype=np.float32) / (size - 1)
         )
-        expect(node, inputs=[size], outputs=[y], name="test_hannwindow_symmetric")
+        expect(
+            node,
+            inputs=[size],
+            outputs=[y.astype(np.float32)],
+            name="test_hannwindow_symmetric",
+        )

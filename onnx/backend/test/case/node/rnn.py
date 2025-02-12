@@ -1,16 +1,18 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 import numpy as np
 
 import onnx
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
-from ..base import Base
-from . import expect
 
-
-class RNN_Helper:
+class RNNHelper:
     def __init__(self, **params: Any) -> None:
         # RNN Input Names
         X = "X"
@@ -27,14 +29,14 @@ class RNN_Helper:
         self.num_directions = params[str(W)].shape[0]
 
         if self.num_directions == 1:
-            for k in params.keys():
+            for k, v in params.items():
                 if k != X:
-                    params[k] = np.squeeze(params[k], axis=0)
+                    params[k] = np.squeeze(v, axis=0)
 
             hidden_size = params[R].shape[-1]
             batch_size = params[X].shape[1]
 
-            layout = params[LAYOUT] if LAYOUT in params else 0
+            layout = params.get(LAYOUT, 0)
             x = params[X]
             x = x if layout == 0 else np.swapaxes(x, 0, 1)
             b = (
@@ -61,7 +63,7 @@ class RNN_Helper:
     def f(self, x: np.ndarray) -> np.ndarray:
         return np.tanh(x)
 
-    def step(self) -> Tuple[np.ndarray, np.ndarray]:
+    def step(self) -> tuple[np.ndarray, np.ndarray]:
         seq_length = self.X.shape[0]
         hidden_size = self.H_0.shape[-1]
         batch_size = self.X.shape[1]
@@ -108,7 +110,7 @@ class RNN(Base):
         W = weight_scale * np.ones((1, hidden_size, input_size)).astype(np.float32)
         R = weight_scale * np.ones((1, hidden_size, hidden_size)).astype(np.float32)
 
-        rnn = RNN_Helper(X=input, W=W, R=R)
+        rnn = RNNHelper(X=input, W=W, R=R)
         _, Y_h = rnn.step()
         expect(
             node,
@@ -143,7 +145,7 @@ class RNN(Base):
         R_B = np.zeros((1, hidden_size)).astype(np.float32)
         B = np.concatenate((W_B, R_B), axis=1)
 
-        rnn = RNN_Helper(X=input, W=W, R=R, B=B)
+        rnn = RNNHelper(X=input, W=W, R=R, B=B)
         _, Y_h = rnn.step()
         expect(
             node,
@@ -179,7 +181,7 @@ class RNN(Base):
         R_B = np.random.randn(1, hidden_size).astype(np.float32)
         B = np.concatenate((W_B, R_B), axis=1)
 
-        rnn = RNN_Helper(X=input, W=W, R=R, B=B)
+        rnn = RNNHelper(X=input, W=W, R=R, B=B)
         _, Y_h = rnn.step()
         expect(
             node,
@@ -208,7 +210,7 @@ class RNN(Base):
         W = weight_scale * np.ones((1, hidden_size, input_size)).astype(np.float32)
         R = weight_scale * np.ones((1, hidden_size, hidden_size)).astype(np.float32)
 
-        rnn = RNN_Helper(X=input, W=W, R=R, layout=layout)
+        rnn = RNNHelper(X=input, W=W, R=R, layout=layout)
         Y, Y_h = rnn.step()
         expect(
             node,

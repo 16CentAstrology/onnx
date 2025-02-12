@@ -1,11 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class Clip(Base):
@@ -56,6 +58,17 @@ class Clip(Base):
             inputs=[x, min_val, max_val],
             outputs=[y],
             name="test_clip_splitbounds",
+        )
+
+        x = np.array([-2, 0, 6]).astype(np.float32)
+        y = np.array([1, 1, 1]).astype(np.float32)
+        min_val = np.float32(2)
+        max_val = np.float32(1)
+        expect(
+            node,
+            inputs=[x, min_val, max_val],
+            outputs=[y],
+            name="test_clip_min_greater_than_max",
         )
 
     @staticmethod

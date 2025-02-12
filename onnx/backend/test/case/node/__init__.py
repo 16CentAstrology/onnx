@@ -1,33 +1,40 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
+import subprocess
 import sys
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 
 import onnx
+from onnx.backend.test.case.test_case import TestCase
+from onnx.backend.test.case.utils import import_recursive
 from onnx.onnx_pb import (
     AttributeProto,
     FunctionProto,
     GraphProto,
     ModelProto,
     NodeProto,
-    OperatorSetIdProto,
+    TensorProto,
     TypeProto,
 )
 
-from ..test_case import TestCase
-from ..utils import import_recursive
-
 _NodeTestCases = []
 _TargetOpType = None
+_DiffOpTypes = None
+_existing_names: dict[str, onnx.NodeProto] = {}
 
 
 def _rename_edges_helper(
     internal_node: NodeProto,
     rename_helper: Callable[[str], str],
-    attribute_map: Dict[str, AttributeProto],
+    attribute_map: dict[str, AttributeProto],
     prefix: str,
 ) -> NodeProto:
     new_node = NodeProto()
@@ -59,23 +66,18 @@ def _rename_edges_helper(
                 for init_desc in new_graph.initializer:
                     sg_rename[init_desc.name] = init_desc.name = prefix + init_desc.name
                 for sparse_init_desc in new_graph.sparse_initializer:
-                    sg_rename[
+                    sg_rename[sparse_init_desc.values.name] = (
                         sparse_init_desc.values.name
-                    ] = sparse_init_desc.values.name = (
-                        prefix + sparse_init_desc.values.name
-                    )
+                    ) = prefix + sparse_init_desc.values.name
                 for sparse_init_desc in new_graph.sparse_initializer:
-                    sg_rename[
+                    sg_rename[sparse_init_desc.indices.name] = (
                         sparse_init_desc.indices.name
-                    ] = sparse_init_desc.indices.name = (
-                        prefix + sparse_init_desc.indices.name
-                    )
+                    ) = prefix + sparse_init_desc.indices.name
 
                 def subgraph_rename_helper(name: str) -> Any:
                     if name in sg_rename:  # noqa: B023
                         return sg_rename[name]  # noqa: B023
-                    else:
-                        return rename_helper(name)
+                    return rename_helper(name)
 
                 new_nodes = [
                     _rename_edges_helper(
@@ -92,8 +94,8 @@ def _rename_edges_helper(
 # FIXME(TMVector): Any reason we can't get rid of this and use the C++ helper directly?
 def function_expand_helper(
     node: NodeProto, function_proto: FunctionProto, op_prefix: str
-) -> List[NodeProto]:
-    io_names_map = dict()
+) -> list[NodeProto]:
+    io_names_map = {}
     attribute_map = {a.name: a for a in node.attribute}
 
     for idx in range(len(function_proto.input)):
@@ -116,8 +118,7 @@ def function_expand_helper(
             return io_names_map[internal_name]
         elif internal_name == "":
             return ""
-        else:
-            return op_prefix + internal_name
+        return op_prefix + internal_name
 
     new_node_list = [
         _rename_edges_helper(internal_node, rename_helper, attribute_map, op_prefix)
@@ -127,11 +128,11 @@ def function_expand_helper(
 
 
 def function_testcase_helper(
-    node: NodeProto, input_types: List[TypeProto], name: str
-) -> Tuple[List[Tuple[List[NodeProto], Any]], int]:
+    node: NodeProto, input_types: list[TypeProto], name: str
+) -> tuple[list[tuple[list[NodeProto], Any]], int]:
     test_op = node.op_type
     op_prefix = test_op + "_" + name + "_expanded_function_"
-    schema = onnx.defs.get_schema(test_op, node.domain)
+    schema = onnx.defs.get_schema(test_op, domain=node.domain)
 
     # an op schema may have several functions, each for one opset version
     # opset versions include the op's since_version and other opset versions
@@ -168,9 +169,9 @@ def function_testcase_helper(
 
 
 def _extract_value_info(
-    input: Union[List[Any], np.ndarray, None],
+    input: list[Any] | np.ndarray | None,
     name: str,
-    type_proto: Optional[TypeProto] = None,
+    type_proto: TypeProto | None = None,
 ) -> onnx.ValueInfoProto:
     if type_proto is None:
         if input is None:
@@ -182,6 +183,10 @@ def _extract_value_info(
             shape = None
             tensor_type_proto = onnx.helper.make_tensor_type_proto(elem_type, shape)
             type_proto = onnx.helper.make_sequence_type_proto(tensor_type_proto)
+        elif isinstance(input, TensorProto):
+            elem_type = input.data_type
+            shape = tuple(input.dims)
+            type_proto = onnx.helper.make_tensor_type_proto(elem_type, shape)
         else:
             elem_type = onnx.helper.np_dtype_to_tensor_dtype(input.dtype)
             shape = input.shape
@@ -191,14 +196,18 @@ def _extract_value_info(
 
 
 def _make_test_model_gen_version(graph: GraphProto, **kwargs: Any) -> ModelProto:
-    latest_onnx_version, latest_ml_version, latest_training_version = onnx.helper.VERSION_TABLE[-1][2:5]  # type: ignore
+    (
+        latest_onnx_version,
+        latest_ml_version,
+        latest_training_version,
+    ) = onnx.helper.VERSION_TABLE[-1][2:5]  # type: ignore
     if "opset_imports" in kwargs:
         for opset in kwargs["opset_imports"]:
             # If the test model uses an unreleased opset version (latest_version+1),
             # directly use make_model to create a model with the latest ir version
             if (
                 (
-                    (opset.domain == "" or opset.domain == "ai.onnx")
+                    (opset.domain in {"", "ai.onnx"})
                     and opset.version == latest_onnx_version + 1
                 )
                 or (
@@ -207,8 +216,8 @@ def _make_test_model_gen_version(graph: GraphProto, **kwargs: Any) -> ModelProto
                 )
                 or (
                     (
-                        opset.domain == "ai.onnx.training version"
-                        or opset.domain == "ai.onnx.preview.training"
+                        opset.domain
+                        in {"ai.onnx.training version", "ai.onnx.preview.training"}
                     )
                     and opset.version == latest_training_version + 1
                 )
@@ -230,14 +239,21 @@ def _make_test_model_gen_version(graph: GraphProto, **kwargs: Any) -> ModelProto
 # the latest opset vesion that supports before targeted opset version
 def expect(
     node_op: onnx.NodeProto,
-    inputs: Sequence[np.ndarray],
-    outputs: Sequence[np.ndarray],
+    inputs: Sequence[np.ndarray | TensorProto],
+    outputs: Sequence[np.ndarray | TensorProto],
     name: str,
     **kwargs: Any,
 ) -> None:
     # skip if the node_op's op_type is not same as the given one
     if _TargetOpType and node_op.op_type != _TargetOpType:
         return
+    if _DiffOpTypes is not None and node_op.op_type.lower() not in _DiffOpTypes:
+        return
+    if name in _existing_names:
+        raise ValueError(
+            f"Name {name!r} is already using by one test case for node type {node_op.op_type!r}."
+        )
+    _existing_names[name] = node_op
 
     # in case node_op is modified
     node = deepcopy(node_op)
@@ -270,7 +286,7 @@ def expect(
         # To make sure the model will be produced with the same opset_version after opset changes
         # By default, it uses since_version as opset_version for produced models
         produce_opset_version = onnx.defs.get_schema(
-            node.op_type, node.domain
+            node.op_type, domain=node.domain
         ).since_version
         kwargs["opset_imports"] = [
             onnx.helper.make_operatorsetid(node.domain, produce_opset_version)
@@ -295,15 +311,16 @@ def expect(
     # Create list of types for node.input, filling a default TypeProto for missing inputs:
     # E.g. merge(["x", "", "y"], [x-value-info, y-value-info]) will return [x-type, default-type, y-type]
     def merge(
-        node_inputs: List[str], present_value_info: List[onnx.ValueInfoProto]
-    ) -> List[TypeProto]:
+        node_inputs: list[str], present_value_info: list[onnx.ValueInfoProto]
+    ) -> list[TypeProto]:
         if node_inputs:
             if node_inputs[0] != "":
-                return [present_value_info[0].type] + merge(
-                    node_inputs[1:], present_value_info[1:]
-                )
+                return [
+                    present_value_info[0].type,
+                    *merge(node_inputs[1:], present_value_info[1:]),
+                ]
             else:
-                return [TypeProto()] + merge(node_inputs[1:], present_value_info)
+                return [TypeProto(), *merge(node_inputs[1:], present_value_info)]
         return []
 
     merged_types = merge(list(node.input), inputs_vi)
@@ -340,7 +357,7 @@ def expect(
 
         function_test_name = name + "_expanded"
         if onnx_ai_opset_version and onnx_ai_opset_version != since_version:
-            function_test_name += "_ver" + str(onnx_ai_opset_version)
+            function_test_name += f"_ver{onnx_ai_opset_version}"
         graph = onnx.helper.make_graph(
             nodes=expanded_function_nodes,
             name=function_test_name,
@@ -363,11 +380,48 @@ def expect(
         )
 
 
-def collect_testcases(op_type: str) -> List[TestCase]:
+def collect_testcases(op_type: str) -> list[TestCase]:
     """Collect node test cases"""
     # only keep those tests related to this operator
-    global _TargetOpType
+    global _TargetOpType  # noqa: PLW0603
     _TargetOpType = op_type
 
     import_recursive(sys.modules[__name__])
     return _NodeTestCases
+
+
+def collect_diff_testcases() -> list[TestCase]:
+    """Collect node test cases which are different from the main branch"""
+    global _DiffOpTypes  # noqa: PLW0603
+    _DiffOpTypes = get_diff_op_types()
+
+    import_recursive(sys.modules[__name__])
+    return _NodeTestCases
+
+
+def get_diff_op_types():
+    cwd_path = Path.cwd()
+    # git fetch first for git diff on GitHub Action
+    subprocess.run(
+        ["git", "fetch", "origin", "main:main"],
+        cwd=cwd_path,
+        capture_output=True,
+        check=True,
+    )
+    # obtain list of added or modified files in this PR
+    obtain_diff = subprocess.Popen(
+        ["git", "diff", "--name-only", "--diff-filter=AM", "origin/main", "HEAD"],
+        cwd=cwd_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdoutput, _ = obtain_diff.communicate()
+    diff_list = stdoutput.split()
+    changed_op_types = []
+    for file in diff_list:
+        file_name = file.decode("utf-8")
+        if file_name.startswith("onnx/backend/test/case/node/") and file_name.endswith(
+            ".py"
+        ):
+            changed_op_types.append(file_name.split("/")[-1].replace(".py", ""))
+    return changed_op_types

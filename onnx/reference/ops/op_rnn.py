@@ -1,9 +1,10 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,W0221,W0613
+from __future__ import annotations
 
 import numpy as np
 
-from onnx.defs import onnx_opset_version
 from onnx.reference.op_run import OpRun
 
 
@@ -35,22 +36,32 @@ class CommonRNN(OpRun):
 
         self.f1 = self.choose_act(
             self.activations[0],  # type: ignore
-            self.activation_alpha[0]  # type: ignore
-            if self.activation_alpha is not None and len(self.activation_alpha) > 0  # type: ignore
-            else None,
-            self.activation_beta[0]  # type: ignore
-            if self.activation_beta is not None and len(self.activation_beta) > 0  # type: ignore
-            else None,
+            (
+                self.activation_alpha[0]  # type: ignore
+                if self.activation_alpha is not None and len(self.activation_alpha) > 0  # type: ignore
+                else None
+            ),
+            (
+                self.activation_beta[0]  # type: ignore
+                if self.activation_beta is not None and len(self.activation_beta) > 0  # type: ignore
+                else None
+            ),
         )
         if len(self.activations) > 1:  # type: ignore
             self.f2 = self.choose_act(
                 self.activations[1],  # type: ignore
-                self.activation_alpha[1]  # type: ignore
-                if self.activation_alpha is not None and len(self.activation_alpha) > 1  # type: ignore
-                else None,
-                self.activation_beta[1]  # type: ignore
-                if self.activation_beta is not None and len(self.activation_beta) > 1  # type: ignore
-                else None,
+                (
+                    self.activation_alpha[1]  # type: ignore
+                    if self.activation_alpha is not None
+                    and len(self.activation_alpha) > 1  # type: ignore
+                    else None
+                ),
+                (
+                    self.activation_beta[1]  # type: ignore
+                    if self.activation_beta is not None
+                    and len(self.activation_beta) > 1  # type: ignore
+                    else None
+                ),
             )
         self.n_outputs = len(onnx_node.output)
 
@@ -88,11 +99,11 @@ class CommonRNN(OpRun):
         B=None,
         sequence_lens=None,
         initial_h=None,
-        activation_alpha=None,
-        activation_beta=None,
-        activations=None,
-        clip=None,
-        direction=None,
+        activation_alpha=None,  # noqa: ARG002
+        activation_beta=None,  # noqa: ARG002
+        activations=None,  # noqa: ARG002
+        clip=None,  # noqa: ARG002
+        direction=None,  # noqa: ARG002
         hidden_size=None,
         layout=None,
     ):
@@ -132,20 +143,13 @@ class CommonRNN(OpRun):
             Y = np.transpose(Y, [2, 0, 1, 3])
             Y_h = Y[:, :, -1, :]
 
+        Y = Y.astype(X.dtype)
         return (Y,) if self.n_outputs == 1 else (Y, Y_h)
 
 
 class RNN_7(CommonRNN):
-
     pass
 
 
 class RNN_14(CommonRNN):
-
     pass
-
-
-if onnx_opset_version() >= 14:
-    RNN = RNN_14
-else:
-    RNN = RNN_7  # type: ignore

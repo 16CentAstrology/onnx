@@ -1,5 +1,7 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=E1130,W0221
+from __future__ import annotations
 
 import numpy as np
 
@@ -13,5 +15,5 @@ class Shrink(OpRun):
                 x < -lambd,
                 x + bias,
                 np.where(x > lambd, x - bias, 0),
-            ),
+            ).astype(x.dtype),
         )

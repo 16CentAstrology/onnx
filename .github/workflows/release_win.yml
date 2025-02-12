@@ -1,14 +1,17 @@
+# Copyright (c) ONNX Project Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 name: WindowsRelease
 
-on:
-  schedule:
-    # Run weekly on Monday 00:00
-    - cron:  '00 00 * * MON'
-  push:
-    branches: [main, rel-*]
-  pull_request:
-    branches: [main, rel-*]
-  workflow_dispatch:
+on:  # Specifies the event triggering the workflow
+  workflow_call:  # Indicates that this is a reusable workflow
+    inputs:
+      os:
+        required: true
+        type: string
+permissions:  # set top-level default permissions as security best practice
+  contents: read
 
 jobs:
   build:
@@ -16,31 +19,24 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        # TODO: Freeze as 3.10.5 for now and use the latest 3.10 after future numpy upgrade in ONNX;
-        # related issue: https://github.com/actions/setup-python/issues/481
-        python-version: ['3.7', '3.8', '3.9', '3.10.5', '3.11']
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
         architecture: ['x64', 'x86']
-    steps:        
+    steps:
     - name: Checkout ONNX
-      uses: actions/checkout@v3
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
          path: ./onnx
-    - name: Checkout ONNX submodules
-      shell: bash
-      run: |
-         cd onnx
-         auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-         git submodule sync --recursive
-         git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+         submodules: 'recursive'
+         persist-credentials: false
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
       with:
         python-version: ${{ matrix.python-version }}
-        architecture: ${{ matrix.architecture }}    
+        architecture: ${{ matrix.architecture }}
 
     - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v1.1
+      uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2.0.0
       with:
         msbuild-architecture: ${{ matrix.architecture }}
 
@@ -48,7 +44,12 @@ jobs:
       run: |
         python -m pip install -q --upgrade pip
         cd onnx
+        if ('${{ matrix.architecture }}' -eq 'x86') {
+          echo "Skip installing dependencies for reference, because they don't have prebuilt wheel on x86"
+          sed -i '' '/-r requirements-reference.txt/d' requirements-release.txt
+        }
         python -m pip install -q -r requirements-release.txt
+        python -m pip install cmake
 
     - name: Build ONNX wheel
       run: |
@@ -64,46 +65,30 @@ jobs:
         $Env:ONNX_ML=1
         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DONNX_USE_LITE_PROTO=ON"
 
-        if ('${{ github.event_name }}' -eq 'schedule') {
-          echo "Build weekly TestPyPI package"
-          python setup.py bdist_wheel --weekly_build
-        } else {
-          python setup.py bdist_wheel
+        if ('${{ github.event_name }}' -eq 'schedule' -or '${{ github.event_name }}' -eq 'workflow_dispatch') {
+          echo "Build weekly PyPI package"
+          (Get-Content -Path 'pyproject.toml') | ForEach-Object { $_ -replace 'name = "onnx"', 'name = "onnx-weekly"' } | Set-Content -Path 'pyproject.toml'
+          $Env:ONNX_PREVIEW_BUILD=1
         }
-        Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname} 
-  
+        python -m build --wheel
+        Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
+ 
     - name: Test the installed wheel
       run: |
         cd onnx
         pytest
 
-    - uses: actions/upload-artifact@v1
+    - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
       with:
-        name: wheels
+        name: wheels-${{ inputs.os }}-${{ matrix.python-version }}-${{matrix.architecture}}
         path: ./onnx/dist
-  
-    - name: Upload wheel to TestPyPI weekly
-      if: (github.event_name == 'schedule') # Only triggered by weekly event
-      run: |
-        twine upload --verbose onnx/dist/*.whl --repository-url https://test.pypi.org/legacy/ -u ${{ secrets.TESTPYPI_USERNAME }} -p ${{ secrets.TESTPYPI_PASSWORD }}
 
     - name: Verify ONNX with the latest numpy
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y numpy onnx && python -m pip install numpy
-        Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
-        pytest
-    # TODO: Remove one if condition after using consistent NumPy version for all Python versions
-    - name: Verify ONNX with the minimum supported numpy  (from requirements.txt)
-      if: ${{ always() }}
-      run: |
-        cd onnx
-        if ('${{ matrix.python-version }}' -eq '3.11') {
-          python -m pip uninstall -y numpy onnx && python -m pip install numpy==1.23.2
-        } else {
-          python -m pip uninstall -y numpy onnx && python -m pip install numpy==1.16.6
-        }
+        python -m pip uninstall -y numpy onnx
+        python -m pip install numpy
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
 
@@ -111,20 +96,16 @@ jobs:
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y protobuf onnx && python -m pip install protobuf
+        python -m pip uninstall -y protobuf onnx
+        python -m pip install protobuf
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
 
-    - name: Verify ONNX with the minimum supported protobuf (from requirements.txt)
+    - name: Verify ONNX with the minimumly supported packages
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y protobuf onnx && python -m pip install protobuf==3.20.2
+        python -m pip uninstall -y protobuf numpy onnx
+        python -m pip install -r requirements-min.txt
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
-
-    - name: Verify ONNX with ONNX Runtime PyPI package
-      if: matrix.python-version != '3.11'
-      run: |
-        python -m pip install -q onnxruntime
-        python onnx\onnx\test\test_with_ort.py

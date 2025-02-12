@@ -1,22 +1,21 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Optional, Tuple
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 from numpy.random import RandomState  # type: ignore
 
-from onnx.defs import onnx_opset_version
 from onnx.reference.op_run import OpRun
 
 
 def _dropout(
     X: np.ndarray,
     drop_probability: float = 0.5,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     training_mode: bool = False,
     return_mask: bool = False,
-) -> Tuple[np.ndarray]:
+) -> tuple[np.ndarray]:
     if drop_probability == 0 or not training_mode:
         if return_mask:
             return X, np.ones(X.shape, dtype=bool)  # type: ignore
@@ -36,10 +35,10 @@ class DropoutBase(OpRun):
     def _private_run(
         self,
         X: np.ndarray,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         ratio: float = 0.5,
         training_mode: bool = False,
-    ) -> Tuple[np.ndarray]:
+    ) -> tuple[np.ndarray]:
         return _dropout(
             X,
             ratio,
@@ -60,11 +59,8 @@ class Dropout_12(DropoutBase):
         ratio = 0.5 if len(inputs) <= 1 else inputs[1]
         training_mode = False if len(inputs) <= 2 else inputs[2]
         return self._private_run(
-            X, seed=seed, ratio=ratio, training_mode=training_mode  # type: ignore
+            X,
+            seed=seed,
+            ratio=ratio,
+            training_mode=training_mode,  # type: ignore
         )
-
-
-if onnx_opset_version() >= 12:
-    Dropout = Dropout_12
-else:
-    Dropout = Dropout_7  # type: ignore

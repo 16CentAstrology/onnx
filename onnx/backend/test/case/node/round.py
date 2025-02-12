@@ -1,11 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class Round(Base):
@@ -36,6 +38,8 @@ class Round(Base):
                 -2.8,
             ]
         ).astype(np.float32)
+
+        # expected output
         y = np.array(
             [
                 0.0,
@@ -54,7 +58,5 @@ class Round(Base):
                 -2.0,
                 -3.0,
             ]
-        ).astype(
-            np.float32
-        )  # expected output
+        ).astype(np.float32)
         expect(node, inputs=[x], outputs=[y], name="test_round")

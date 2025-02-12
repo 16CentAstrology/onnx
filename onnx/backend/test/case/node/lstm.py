@@ -1,16 +1,18 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 import numpy as np
 
 import onnx
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
-from ..base import Base
-from . import expect
 
-
-class LSTM_Helper:
+class LSTMHelper:
     def __init__(self, **params: Any) -> None:
         # LSTM Input Names
         X = "X"
@@ -31,14 +33,14 @@ class LSTM_Helper:
         self.num_directions = params[W].shape[0]
 
         if self.num_directions == 1:
-            for k in params.keys():
+            for k, v in params.items():
                 if k != X:
-                    params[k] = np.squeeze(params[k], axis=0)
+                    params[k] = np.squeeze(v, axis=0)
 
             hidden_size = params[R].shape[-1]
             batch_size = params[X].shape[1]
 
-            layout = params[LAYOUT] if LAYOUT in params else 0
+            layout = params.get(LAYOUT, 0)
             x = params[X]
             x = x if layout == 0 else np.swapaxes(x, 0, 1)
             b = (
@@ -83,7 +85,7 @@ class LSTM_Helper:
     def h(self, x: np.ndarray) -> np.ndarray:
         return np.tanh(x)
 
-    def step(self) -> Tuple[np.ndarray, np.ndarray]:
+    def step(self) -> tuple[np.ndarray, np.ndarray]:
         seq_length = self.X.shape[0]
         hidden_size = self.H_0.shape[-1]
         batch_size = self.X.shape[1]
@@ -145,7 +147,7 @@ class LSTM(Base):
             (1, number_of_gates * hidden_size, hidden_size)
         ).astype(np.float32)
 
-        lstm = LSTM_Helper(X=input, W=W, R=R)
+        lstm = LSTMHelper(X=input, W=W, R=R)
         _, Y_h = lstm.step()
         expect(
             node,
@@ -187,7 +189,7 @@ class LSTM(Base):
         R_B = np.zeros((1, number_of_gates * hidden_size)).astype(np.float32)
         B = np.concatenate((W_B, R_B), 1)
 
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B)
+        lstm = LSTMHelper(X=input, W=W, R=R, B=B)
         _, Y_h = lstm.step()
         expect(
             node,
@@ -230,7 +232,7 @@ class LSTM(Base):
             np.float32
         )
 
-        lstm = LSTM_Helper(
+        lstm = LSTMHelper(
             X=input, W=W, R=R, B=B, P=P, initial_c=init_c, initial_h=init_h
         )
         _, Y_h = lstm.step()
@@ -266,7 +268,7 @@ class LSTM(Base):
             (1, number_of_gates * hidden_size, hidden_size)
         ).astype(np.float32)
 
-        lstm = LSTM_Helper(X=input, W=W, R=R, layout=layout)
+        lstm = LSTMHelper(X=input, W=W, R=R, layout=layout)
         Y, Y_h = lstm.step()
         expect(
             node,

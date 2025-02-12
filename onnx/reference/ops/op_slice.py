@@ -1,21 +1,19 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0912,R0913,W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Optional
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
-from onnx.defs import onnx_opset_version
-
-from ._op import OpRun
+from onnx.reference.ops._op import OpRun
 
 
 def _slice(
     data: np.ndarray,
     starts: np.ndarray,
     ends: np.ndarray,
-    axes: Optional[np.ndarray] = None,
-    steps: Optional[np.ndarray] = None,
+    axes: np.ndarray | None = None,
+    steps: np.ndarray | None = None,
 ) -> np.ndarray:
     if isinstance(starts, list):
         starts = np.array(starts)
@@ -34,7 +32,7 @@ def _slice(
             slices = [slice(s, e) for s, e in zip(starts, ends)]
         else:
             slices = [slice(s, e, d) for s, e, d in zip(starts, ends, steps)]
-    else:
+    else:  # noqa: PLR5501
         if steps is None:
             slices = [slice(0, a) for a in data.shape]
             for s, e, a in zip(starts, ends, axes):
@@ -73,9 +71,3 @@ class Slice_1(SliceCommon):
 
     def _run(self, data, axes=None, ends=None, starts=None):  # type: ignore
         return SliceCommon._run(self, data, starts, ends, axes)
-
-
-if onnx_opset_version() >= 10:
-    Slice = Slice_10
-else:
-    Slice = Slice_1  # type: ignore

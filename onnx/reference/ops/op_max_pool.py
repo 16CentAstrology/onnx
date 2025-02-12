@@ -1,9 +1,11 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=C0200,R0912,R0913,R0914,R0915,R0916,R1702,W0221
+from __future__ import annotations
 
 import numpy as np
 
-from ._op_common_pool import CommonPool
+from onnx.reference.ops._op_common_pool import CommonPool
 
 
 class MaxPool(CommonPool):
@@ -85,6 +87,11 @@ class MaxPool(CommonPool):
                         + 1
                     )
                 )
+                need_to_reduce_out_size_in_ceil_mode = (
+                    output_spatial_shape[i] - 1
+                ) * strides[i] >= input_spatial_shape[i] + new_pads[i][0]
+                if need_to_reduce_out_size_in_ceil_mode:
+                    output_spatial_shape[i] -= 1
         else:
             for i in range(len(input_spatial_shape)):
                 output_spatial_shape[i] = int(
@@ -175,16 +182,15 @@ class MaxPool(CommonPool):
     def _max_pool_1d(  # type: ignore
         self,
         x,
-        auto_pad,  # pylint: disable=W0613
-        ceil_mode,  # pylint: disable=W0613
+        auto_pad,  # noqa: ARG002
+        ceil_mode,  # noqa: ARG002
         dilations,
         kernel_shape,
         new_pads,
-        storage_order,  # pylint: disable=W0613
+        storage_order,  # noqa: ARG002
         strides,
         output_spatial_shape,
     ):
-
         global_pooling = False
         y_dims = x.shape[:2] + tuple(output_spatial_shape)
         y = np.zeros(y_dims, dtype=x.dtype)
@@ -232,8 +238,8 @@ class MaxPool(CommonPool):
     def _max_pool_2d(  # type: ignore
         self,
         x,
-        auto_pad,  # pylint: disable=W0613
-        ceil_mode,  # pylint: disable=W0613
+        auto_pad,  # noqa: ARG002
+        ceil_mode,  # noqa: ARG002
         dilations,
         kernel_shape,
         new_pads,
@@ -241,7 +247,6 @@ class MaxPool(CommonPool):
         strides,
         output_spatial_shape,
     ):
-
         global_pooling = False
         y_dims = x.shape[:2] + tuple(output_spatial_shape)
         y = np.zeros(y_dims, dtype=x.dtype)
@@ -310,8 +315,8 @@ class MaxPool(CommonPool):
     def _max_pool_3d(  # type: ignore
         self,
         x,
-        auto_pad,  # pylint: disable=W0613
-        ceil_mode,  # pylint: disable=W0613
+        auto_pad,  # noqa: ARG002
+        ceil_mode,  # noqa: ARG002
         dilations,
         kernel_shape,
         new_pads,
@@ -319,7 +324,6 @@ class MaxPool(CommonPool):
         strides,
         output_spatial_shape,
     ):
-
         global_pooling = False
         y_dims = x.shape[:2] + tuple(output_spatial_shape)
         y = np.zeros(y_dims, dtype=x.dtype)

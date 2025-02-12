@@ -1,11 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 def specify_int64(indices, inverse_indices, counts):  # type: ignore
@@ -53,9 +55,9 @@ class Unique(Base):
 
         # prepare index mapping from sorted to unsorted
         argsorted_indices = np.argsort(indices)
-        inverse_indices_map = {
-            i: si for i, si in zip(argsorted_indices, np.arange(len(argsorted_indices)))
-        }
+        inverse_indices_map = dict(
+            zip(argsorted_indices, np.arange(len(argsorted_indices)))
+        )
 
         indices = indices[argsorted_indices]
         y = np.take(x, indices, axis=0)
@@ -97,6 +99,8 @@ class Unique(Base):
         indices, inverse_indices, counts = specify_int64(
             indices, inverse_indices, counts
         )
+        # behavior changed with numpy >= 2.0
+        inverse_indices = inverse_indices.reshape(-1)
         # print(y)
         # [[1. 0. 0.]
         #  [2. 3. 4.]]
@@ -135,6 +139,8 @@ class Unique(Base):
         indices, inverse_indices, counts = specify_int64(
             indices, inverse_indices, counts
         )
+        # behavior changed with numpy >= 2.0
+        inverse_indices = inverse_indices.reshape(-1)
         # print(y)
         # [[[0. 1.]
         #  [1. 1.]
@@ -170,6 +176,8 @@ class Unique(Base):
         indices, inverse_indices, counts = specify_int64(
             indices, inverse_indices, counts
         )
+        # behavior changed with numpy >= 2.0
+        inverse_indices = inverse_indices.reshape(-1)
         # print(y)
         # [[0. 1.]
         #  [0. 1.]
@@ -186,4 +194,36 @@ class Unique(Base):
             inputs=[x],
             outputs=[y, indices, inverse_indices, counts],
             name="test_unique_sorted_with_negative_axis",
+        )
+
+    @staticmethod
+    def export_length_1() -> None:
+        node_sorted = onnx.helper.make_node(
+            "Unique",
+            inputs=["X"],
+            outputs=["Y", "indices", "inverse_indices", "counts"],
+            sorted=1,
+        )
+
+        x = np.array([0], dtype=np.int64)
+        y, indices, inverse_indices, counts = np.unique(x, True, True, True)
+        indices, inverse_indices, counts = specify_int64(
+            indices, inverse_indices, counts
+        )
+        # behavior changed with numpy >= 2.0
+        inverse_indices = inverse_indices.reshape(-1)
+        # print(y)
+        # [0]
+        # print(indices)
+        # [0]
+        # print(inverse_indices)
+        # [0]
+        # print(counts)
+        # [1]
+
+        expect(
+            node_sorted,
+            inputs=[x],
+            outputs=[y, indices, inverse_indices, counts],
+            name="test_unique_length_1",
         )

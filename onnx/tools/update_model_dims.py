@@ -1,6 +1,9 @@
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) ONNX Project Contributors
 
-from typing import Any, Dict, List, Set
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+from typing import Any
 
 import onnx.checker
 from onnx import ModelProto, ValueInfoProto
@@ -8,11 +11,10 @@ from onnx import ModelProto, ValueInfoProto
 
 def update_inputs_outputs_dims(
     model: ModelProto,
-    input_dims: Dict[str, List[Any]],
-    output_dims: Dict[str, List[Any]],
+    input_dims: dict[str, list[Any]],
+    output_dims: dict[str, list[Any]],
 ) -> ModelProto:
-    """
-    This function updates the dimension sizes of the model's inputs and outputs to the values
+    """This function updates the dimension sizes of the model's inputs and outputs to the values
     provided in input_dims and output_dims. if the dim value provided is negative, a unique dim_param
     will be set for that dimension.
 
@@ -42,10 +44,10 @@ def update_inputs_outputs_dims(
         updated_model = update_inputs_outputs_dims(model, input_dims, output_dims)
         onnx.save(updated_model, 'model.onnx')
     """
-    dim_param_set: Set[str] = set()
+    dim_param_set: set[str] = set()
 
     def init_dim_param_set(
-        dim_param_set: Set[str], value_infos: List[ValueInfoProto]
+        dim_param_set: set[str], value_infos: list[ValueInfoProto]
     ) -> None:
         for info in value_infos:
             shape = info.type.tensor_type.shape
@@ -63,32 +65,28 @@ def update_inputs_outputs_dims(
             if dim >= 0:
                 if dim_proto.HasField("dim_value") and dim_proto.dim_value != dim:
                     raise ValueError(
-                        "Unable to set dimension value to {} for axis {} of {}. Contradicts existing dimension value {}.".format(
-                            dim, j, name, dim_proto.dim_value
-                        )
+                        f"Unable to set dimension value to {dim} for axis {j} of {name}. Contradicts existing dimension value {dim_proto.dim_value}."
                     )
                 dim_proto.dim_value = dim
             else:
                 generated_dim_param = name + "_" + str(j)
                 if generated_dim_param in dim_param_set:
                     raise ValueError(
-                        "Unable to generate unique dim_param for axis {} of {}. Please manually provide a dim_param value.".format(
-                            j, name
-                        )
+                        f"Unable to generate unique dim_param for axis {j} of {name}. Please manually provide a dim_param value."
                     )
                 dim_proto.dim_param = generated_dim_param
         elif isinstance(dim, str):
             dim_proto.dim_param = dim
         else:
-            raise ValueError(
+            raise ValueError(  # noqa: TRY004
                 f"Only int or str is accepted as dimension value, incorrect type: {type(dim)}"
             )
 
-    for input in model.graph.input:
-        input_name = input.name
+    for input_ in model.graph.input:
+        input_name = input_.name
         input_dim_arr = input_dims[input_name]
         for j, dim in enumerate(input_dim_arr):
-            update_dim(input, dim, j, input_name)
+            update_dim(input_, dim, j, input_name)
 
     for output in model.graph.output:
         output_name = output.name

@@ -1,17 +1,17 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
-
-from typing import Optional
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 def optional_has_element_reference_implementation(
-    optional: Optional[np.ndarray],
+    optional: np.ndarray | None,
 ) -> np.ndarray:
     if optional is None:
         return np.array(False)

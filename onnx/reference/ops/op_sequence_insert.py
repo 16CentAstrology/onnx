@@ -1,7 +1,9 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Any, List, Optional, Union
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 
@@ -9,12 +11,12 @@ from onnx.reference.op_run import OpRun
 
 
 def sequence_insert_reference_implementation(
-    sequence: Union[List[Any], np.ndarray],
+    sequence: list[Any] | np.ndarray,
     tensor: np.ndarray,
-    position: Optional[np.ndarray] = None,
-) -> List[Any]:
+    position: np.ndarray | None = None,
+) -> list[Any]:
     # make a copy of input sequence
-    seq: List[Any] = []
+    seq: list[Any] = []
     if sequence is not None and (
         not isinstance(sequence, np.ndarray) or len(sequence.shape) > 0
     ):
@@ -40,11 +42,11 @@ class SequenceInsert(OpRun):
         if ind is None:
             res = sequence_insert_reference_implementation(S, T)
         elif isinstance(ind, int):
-            res = sequence_insert_reference_implementation(S, T, [ind])
+            res = sequence_insert_reference_implementation(S, T, [ind])  # type: ignore[arg-type]
         elif len(ind.shape) > 0:
             res = sequence_insert_reference_implementation(S, T, ind)
         elif len(ind.shape) == 0:
-            res = sequence_insert_reference_implementation(S, T, [int(ind)])
+            res = sequence_insert_reference_implementation(S, T, [int(ind)])  # type: ignore[arg-type]
         else:
             res = sequence_insert_reference_implementation(S, T)
         return (res,)

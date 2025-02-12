@@ -1,9 +1,11 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
 import numpy as np
 
-from ._op import OpRunBinary
+from onnx.reference.ops._op import OpRunBinary
 
 
 class BitwiseOr(OpRunBinary):

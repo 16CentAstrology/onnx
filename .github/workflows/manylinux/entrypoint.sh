@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Copyright (c) ONNX Project Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set -e -x
 
 # CLI arguments
@@ -12,13 +16,12 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib
 # Compile wheels
 # Need to be updated if there is a new Python Version
 if [ "$(uname -m)" == "aarch64" ]; then
- PIP_INSTALL_COMMAND="$PY_VERSION -m pip install --no-cache-dir -q"
+ PIP_INSTALL_COMMAND="$PY_VERSION -m pip install --only-binary google-re2 --no-cache-dir -q"
  PYTHON_COMMAND="$PY_VERSION"
 else
- declare -A python_map=( ["3.7"]="cp37-cp37m" ["3.8"]="cp38-cp38" ["3.9"]="cp39-cp39" ["3.10"]="cp310-cp310" ["3.11"]="cp311-cp311")
- declare -A python_include=( ["3.7"]="3.7m" ["3.8"]="3.8" ["3.9"]="3.9" ["3.10"]="3.10" ["3.11"]="3.11")
+ declare -A python_map=(["3.9"]="cp39-cp39" ["3.10"]="cp310-cp310" ["3.11"]="cp311-cp311" ["3.12"]="cp312-cp312" ["3.13"]="cp313-cp313")
  PY_VER=${python_map[$PY_VERSION]}
- PIP_INSTALL_COMMAND="/opt/python/${PY_VER}/bin/pip install --no-cache-dir -q"
+ PIP_INSTALL_COMMAND="/opt/python/${PY_VER}/bin/pip install --only-binary google-re2 --no-cache-dir -q"
  PYTHON_COMMAND="/opt/python/${PY_VER}/bin/python"
 fi
 
@@ -32,16 +35,17 @@ source workflow_scripts/protobuf/build_protobuf_unix.sh "$(nproc)" "$(pwd)"/prot
 
 # set ONNX build environments
 export ONNX_ML=1
-export CMAKE_ARGS="-DPYTHON_INCLUDE_DIR=/opt/python/${PY_VER}/include/python${python_include[$PY_VERSION]} -DONNX_USE_LITE_PROTO=ON"
+export CMAKE_ARGS="-DONNX_USE_LITE_PROTO=ON"
 
 # Install Python dependency
 $PIP_INSTALL_COMMAND -r requirements-release.txt || { echo "Installing Python requirements failed."; exit 1; }
 
 # Build wheels
-if [ "$GITHUB_EVENT_NAME" == "schedule" ]; then
-    $PYTHON_COMMAND setup.py bdist_wheel --weekly_build || { echo "Building wheels failed."; exit 1; }
+if [ "$GITHUB_EVENT_NAME" == "schedule" ] || [ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]; then
+    sed -i 's/name = "onnx"/name = "onnx-weekly"/' 'pyproject.toml'
+    ONNX_PREVIEW_BUILD=1 $PYTHON_COMMAND -m build --wheel || { echo "Building wheels failed."; exit 1; }
 else
-    $PYTHON_COMMAND setup.py bdist_wheel || { echo "Building wheels failed."; exit 1; }
+    $PYTHON_COMMAND -m build --wheel || { echo "Building wheels failed."; exit 1; }
 fi
 
 # Bundle external shared libraries into the wheels

@@ -1,19 +1,22 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
-from typing import Any, Dict, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class Concat(Base):
     @staticmethod
     def export() -> None:
-        test_cases: Dict[str, Sequence[Any]] = {
+        test_cases: dict[str, Sequence[Any]] = {
             "1d": ([1, 2], [3, 4]),
             "2d": ([[1, 2], [3, 4]], [[5, 6], [7, 8]]),
             "3d": (
@@ -27,12 +30,12 @@ class Concat(Base):
             for i in range(len(values[0].shape)):
                 in_args = ["value" + str(k) for k in range(len(values))]
                 node = onnx.helper.make_node(
-                    "Concat", inputs=[s for s in in_args], outputs=["output"], axis=i
+                    "Concat", inputs=list(in_args), outputs=["output"], axis=i
                 )
                 output = np.concatenate(values, i)
                 expect(
                     node,
-                    inputs=[v for v in values],
+                    inputs=list(values),
                     outputs=[output],
                     name="test_concat_" + test_case + "_axis_" + str(i),
                 )
@@ -40,12 +43,12 @@ class Concat(Base):
             for i in range(-len(values[0].shape), 0):
                 in_args = ["value" + str(k) for k in range(len(values))]
                 node = onnx.helper.make_node(
-                    "Concat", inputs=[s for s in in_args], outputs=["output"], axis=i
+                    "Concat", inputs=list(in_args), outputs=["output"], axis=i
                 )
                 output = np.concatenate(values, i)
                 expect(
                     node,
-                    inputs=[v for v in values],
+                    inputs=list(values),
                     outputs=[output],
                     name="test_concat_" + test_case + "_axis_negative_" + str(abs(i)),
                 )

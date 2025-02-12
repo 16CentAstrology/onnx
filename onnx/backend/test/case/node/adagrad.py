@@ -1,12 +1,14 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 from onnx.defs import AI_ONNX_PREVIEW_TRAINING_DOMAIN
-
-from ..base import Base
-from . import expect
 
 
 def apply_adagrad(r, t, x, g, h, norm_coefficient, epsilon, decay_factor):  # type: ignore
@@ -20,7 +22,7 @@ def apply_adagrad(r, t, x, g, h, norm_coefficient, epsilon, decay_factor):  # ty
     h_sqrt = np.sqrt(h_new) + epsilon
     # Apply ADAGRAD update rule.
     x_new = x - r_ * g_regularized / h_sqrt
-    return (x_new, h_new)
+    return (x_new.astype(x.dtype), h_new.astype(h.dtype))
 
 
 class Adagrad(Base):

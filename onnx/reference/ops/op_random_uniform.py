@@ -1,7 +1,9 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,W0221
+# Copyright (c) ONNX Project Contributors
 
-from ._op_common_random import _CommonRandom
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+from onnx.reference.ops._op_common_random import _CommonRandom
 
 
 class RandomUniform(_CommonRandom):

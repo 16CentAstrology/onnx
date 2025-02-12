@@ -1,29 +1,31 @@
-# SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0902,R0911,R0912,R0913,R0914,W0221
+# Copyright (c) ONNX Project Contributors
 
-from typing import Tuple
+# SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+import dataclasses
 
 import numpy as np
 
 from onnx.reference.op_run import OpRun
 
 
+@dataclasses.dataclass
 class PrepareContext:
-    def __init__(self) -> None:
-        self.boxes_data_ = None
-        self.boxes_size_ = 0
-        self.scores_data_ = None
-        self.scores_size_ = 0
-        self.max_output_boxes_per_class_ = None
-        self.score_threshold_ = None
-        self.iou_threshold_ = None
-        self.num_batches_ = 0
-        self.num_classes_ = 0
-        self.num_boxes_ = 0
+    boxes_data_: np.ndarray | None = None
+    boxes_size_: int = 0
+    scores_data_: np.ndarray | None = None
+    scores_size_: int = 0
+    max_output_boxes_per_class_: np.ndarray | None = None
+    score_threshold_: np.ndarray | None = None
+    iou_threshold_: np.ndarray | None = None
+    num_batches_: int = 0
+    num_classes_: int = 0
+    num_boxes_: int = 0
 
 
 class SelectedIndex:
-    __slots__ = ["batch_index_", "class_index_", "box_index_"]
+    __slots__ = ("batch_index_", "box_index_", "class_index_")
 
     def __init__(
         self, batch_index: int = 0, class_index: int = 0, box_index: int = 0
@@ -33,24 +35,23 @@ class SelectedIndex:
         self.box_index_ = box_index
 
 
-def max_min(lhs: float, rhs: float) -> Tuple[float, float]:
+def max_min(lhs: float, rhs: float) -> tuple[float, float]:
     if lhs >= rhs:
         return rhs, lhs
     return lhs, rhs
 
 
-def SuppressByIOU(
+def suppress_by_iou(  # noqa: PLR0911
     boxes_data: np.ndarray,
     box_index1: int,
     box_index2: int,
     center_point_box: int,
     iou_threshold: float,
 ) -> bool:
-
     box1 = boxes_data[box_index1]
     box2 = boxes_data[box_index2]
     # center_point_box_ only support 0 or 1
-    if 0 == center_point_box:
+    if center_point_box == 0:
         # boxes data format [y1, x1, y2, x2]
         x1_min, x1_max = max_min(box1[1], box1[3])
         x2_min, x2_max = max_min(box2[1], box2[3])
@@ -131,7 +132,7 @@ class NonMaxSuppression(OpRun):
         max_output_boxes_per_class: int,
         iou_threshold: float,
         score_threshold: float,
-    ) -> Tuple[int, float, float]:
+    ) -> tuple[int, float, float]:
         if pc.max_output_boxes_per_class_ is not None:
             max_output_boxes_per_class = max(pc.max_output_boxes_per_class_[0], 0)
 
@@ -159,7 +160,7 @@ class NonMaxSuppression(OpRun):
             pc.max_output_boxes_per_class_ = max_output_boxes_per_class_tensor
         if iou_threshold_tensor.size != 0:
             pc.iou_threshold_ = iou_threshold_tensor
-        if score_threshold_tensor.size != 0:
+        if score_threshold_tensor is not None and score_threshold_tensor.size != 0:
             pc.score_threshold_ = score_threshold_tensor
 
         pc.boxes_size_ = boxes_tensor.size
@@ -181,8 +182,6 @@ class NonMaxSuppression(OpRun):
         score_threshold=None,
         center_point_box=None,
     ):
-        center_point_box = center_point_box or self.center_point_box  # type: ignore
-
         pc = PrepareContext()
         self.prepare_compute(
             pc,
@@ -223,16 +222,16 @@ class NonMaxSuppression(OpRun):
                 if pc.score_threshold_ is not None:
                     for box_index in range(pc.num_boxes_):
                         if class_scores[box_index] > score_threshold:
-                            candidate_boxes.append(
+                            candidate_boxes.append(  # noqa: PERF401
                                 BoxInfo(class_scores[box_index], box_index)
                             )
                 else:
                     for box_index in range(pc.num_boxes_):
-                        candidate_boxes.append(
+                        candidate_boxes.append(  # noqa: PERF401
                             BoxInfo(class_scores[box_index], box_index)
                         )
 
-                sorted_boxes = list(sorted(candidate_boxes))
+                sorted_boxes = sorted(candidate_boxes)
 
                 selected_boxes_inside_class = []  # type: ignore
                 # Get the next box with top score, filter by iou_threshold.
@@ -246,7 +245,7 @@ class NonMaxSuppression(OpRun):
                     # Check with existing selected boxes for this class,
                     # suppress if exceed the IOU (Intersection Over Union) threshold.
                     for selected_index in selected_boxes_inside_class:
-                        if SuppressByIOU(
+                        if suppress_by_iou(
                             batch_boxes,
                             next_top_score.idx_,
                             selected_index.idx_,

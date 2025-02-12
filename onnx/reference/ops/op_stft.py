@@ -1,17 +1,18 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,R0915,W0613,W0221
+from __future__ import annotations
 
 import numpy as np
 
 from onnx.reference.op_run import OpRun
-
-from .op_concat_from_sequence import _concat_from_sequence
-from .op_dft import _cfft as _dft
-from .op_slice import _slice
+from onnx.reference.ops.op_concat_from_sequence import _concat_from_sequence
+from onnx.reference.ops.op_dft import _cfft as _dft
+from onnx.reference.ops.op_slice import _slice
 
 
 def _concat(*args, axis=0):  # type: ignore
-    return np.concatenate(tuple(args), axis=axis)
+    return np.concatenate(args, axis=axis)
 
 
 def _unsqueeze(a, axis):  # type: ignore
@@ -26,9 +27,9 @@ def _unsqueeze(a, axis):  # type: ignore
         return a
 
 
-def _stft(x, fft_length, hop_length, n_frames, window, onesided=False):  # type: ignore
-    """
-    Applies one dimensional FFT with window weights.
+def _stft(x, fft_length: int, hop_length, n_frames, window, onesided=False):  # type: ignore
+    """Applies one dimensional FFT with window weights.
+
     torch defines the number of frames as:
     `n_frames = 1 + (len - n_fft) // hop_length`.
     """
@@ -62,27 +63,25 @@ def _stft(x, fft_length, hop_length, n_frames, window, onesided=False):  # type:
     shape_x = new_x.shape
     shape_x_short = shape_x[:-2]
     shape_x_short_one = tuple(1 for _ in shape_x_short)
-    window_shape = shape_x_short_one + (window_size, 1)
+    window_shape = (*shape_x_short_one, window_size, 1)
     weights = np.reshape(window, window_shape)
     weighted_new_x = new_x * weights
 
     result = _dft(
-        weighted_new_x, fft_length, last_axis, onesided=onesided
-    )  # normalize=False
+        weighted_new_x, fft_length, last_axis, onesided=onesided, normalize=False
+    )
 
     return result
 
 
-def _istft(x, fft_length, hop_length, window, onesided=False):  # type: ignore
-    """
-    Reverses of `stft`.
-    """
+def _istft(x, fft_length: int, hop_length, window, onesided=False):  # type: ignore
+    """Reverses of `stft`."""
     zero = [0]
     one = [1]
     two = [2]
     axisf = [-2]
     n_frames = x.shape[-2]
-    expected_signal_len = fft_length[0] + hop_length * (n_frames - 1)
+    expected_signal_len = fft_length + hop_length * (n_frames - 1)
 
     # building frames
     seqr = []
@@ -92,7 +91,8 @@ def _istft(x, fft_length, hop_length, window, onesided=False):  # type: ignore
         begin = fs
         end = fs + 1
         frame_x = np.squeeze(
-            _slice(x, np.array([begin]), np.array([end]), axisf), axis=axisf[0]  # type: ignore
+            _slice(x, np.array([begin]), np.array([end]), axisf),
+            axis=axisf[0],  # type: ignore
         )
 
         # ifft
@@ -110,8 +110,8 @@ def _istft(x, fft_length, hop_length, window, onesided=False):  # type: ignore
         size = ytmp.shape[-1]
         n_right = expected_signal_len - (n_left + size)
 
-        left_shape = shape_begin + (n_left,)
-        right_shape = shape_begin + (n_right,)
+        left_shape = (*shape_begin, n_left)
+        right_shape = (*shape_begin, n_right)
         right = np.zeros(right_shape, dtype=x.dtype)
         left = np.zeros(left_shape, dtype=x.dtype)
 
@@ -166,5 +166,5 @@ class STFT(OpRun):
         if window is None:
             window = np.ones((frame_length,), dtype=x.dtype)
         n_frames = 1 + (x.shape[-2] - frame_length) // frame_step
-        res = _stft(x, [frame_length], hop_length, n_frames, window, onesided=onesided)
+        res = _stft(x, frame_length, hop_length, n_frames, window, onesided=onesided)
         return (res.astype(x.dtype),)

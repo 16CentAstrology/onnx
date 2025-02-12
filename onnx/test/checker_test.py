@@ -1,11 +1,17 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
+
+import os
+import tempfile
 import unittest
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
 import onnx.defs
-import onnx.onnx_cpp2py_export.checker as C
+import onnx.parser
 from onnx import (
     GraphProto,
     SparseTensorProto,
@@ -66,13 +72,40 @@ class TestChecker(unittest.TestCase):
         node = helper.make_node("Relu", [""], ["Y"], name="test")
         self.assertRaises(checker.ValidationError, checker.check_node, node)
 
+    def test_check_function_nested(self) -> None:
+        func_domain = "local"
+        func_nested_opset_imports = [
+            helper.make_opsetid("", 14),
+            helper.make_opsetid(func_domain, 1),
+        ]
+        # nested identity/add function
+        func_nested_identity_add_name = "func_nested_identity_add"
+        func_nested_identity_add_inputs = ["a", "b"]
+        func_nested_identity_add_outputs = ["c"]
+        func_nested_identity_add_nodes = [
+            helper.make_node("func_identity", ["a"], ["a1"], domain=func_domain),
+            helper.make_node("func_identity", ["b"], ["b1"], domain=func_domain),
+            helper.make_node("func_add", ["a1", "b1"], ["c"], domain=func_domain),
+        ]
+        func_nested_identity_add = helper.make_function(
+            func_domain,
+            func_nested_identity_add_name,
+            func_nested_identity_add_inputs,
+            func_nested_identity_add_outputs,
+            func_nested_identity_add_nodes,
+            func_nested_opset_imports,
+        )
+        checker.check_function(func_nested_identity_add)
+
     def test_check_graph_ir_version_3(self) -> None:
-        ctx = C.CheckerContext()
+        ctx = checker.C.CheckerContext()
         ctx.ir_version = 3
         ctx.opset_imports = {"": onnx.defs.onnx_opset_version()}
 
+        lex_ctx = checker.C.LexicalScopeContext()
+
         def check_ir_version_3(g: GraphProto) -> None:
-            checker.check_graph(g, ctx)
+            checker.check_graph(g, ctx, lex_ctx)
 
         node = helper.make_node("Relu", ["X"], ["Y"], name="test")
         graph = helper.make_graph(
@@ -766,7 +799,7 @@ class TestChecker(unittest.TestCase):
                             ],
                             outputs=[
                                 helper.make_tensor_value_info(
-                                    "cond___while_Identity_graph_outputs_Identity__3_0",
+                                    "cond___while_Less__13_0",
                                     TensorProto.BOOL,
                                     shape=[],
                                 ),
@@ -794,7 +827,7 @@ class TestChecker(unittest.TestCase):
                                     outputs=["cond___while_Less__13_0"],
                                     name="cond___while_Less__13",
                                     domain="",
-                                    to=TensorProto.FLOAT,
+                                    to=TensorProto.BOOL,
                                 ),
                             ],
                         ),
@@ -998,6 +1031,85 @@ class TestChecker(unittest.TestCase):
         self.assertRaises(
             shape_inference.InferenceError, checker.check_model, model, True
         )
+
+    def test_empty_list_attribute(self):
+        model = onnx.parser.parse_model(
+            """
+            <
+                ir_version: 7,
+                opset_import: [ "" : 17]
+            >
+            agraph (float[N] x) => (int64[M] y)
+            {
+                y = Constant <value_ints: ints = []>()
+            }
+        """
+        )
+        # Should not throw an error
+        checker.check_model(model, full_check=True)
+        model = onnx.parser.parse_model(
+            """
+            <
+                ir_version: 7,
+                opset_import: [ "" : 17]
+            >
+            agraph (float[N] x) => (float[M] y)
+            {
+                y = Constant <value_floats: floats = []>()
+            }
+        """
+        )
+        # Should not throw an error
+        checker.check_model(model, full_check=True)
+
+    def test_check_model_supports_unicode_path(self):
+        input_tensor = helper.make_tensor_value_info(
+            "input", onnx.TensorProto.FLOAT, [1]
+        )
+        output_tensor = helper.make_tensor_value_info(
+            "output", onnx.TensorProto.FLOAT, [1]
+        )
+        node = helper.make_node("Identity", ["input"], ["output"])
+        graph = helper.make_graph([node], "test", [input_tensor], [output_tensor])
+        model = helper.make_model(graph, producer_name="test")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unicode_model_path = os.path.join(temp_dir, "模型モデル모델✨.onnx")
+            onnx.save(model, unicode_model_path)
+            checker.check_model(unicode_model_path, full_check=True)
+
+    def test_graph_output_is_defined(self):
+        model = onnx.parser.parse_model(
+            """
+            <ir_version: 7, opset_import: [ "" : 17]>
+            agraph (float[N] x) => (float[N] y, float[N] z)
+            {
+                y = Add(x, x)
+            }
+            # Error: z is not defined
+        """
+        )
+        self.assertRaises(checker.ValidationError, checker.check_model, model)
+
+    def test_graph_output_is_defined_within_sub_graph(self):
+        model = onnx.parser.parse_model(
+            """
+            <ir_version: 7, opset_import: [ "" : 17]>
+            agraph (float[N] x, bool cond) => (float[N] y)
+            {
+                sum = Add (x, x)
+                prod = Mul (x, x)
+                y = If (cond) <
+                    then_branch = then_graph () => (sum) {},
+                    else_branch = else_graph () => (prod) {}
+                >
+            }
+            # Error: sum/prod are accessible inside if-then-else branches, but cannot
+            # be used as outputs of the then/else branch implicitly.
+            # An explicit "Identity(sum)" must be used to return sum as output.
+        """
+        )
+        self.assertRaises(checker.ValidationError, checker.check_model, model)
 
 
 if __name__ == "__main__":

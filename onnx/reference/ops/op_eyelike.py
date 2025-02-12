@@ -1,5 +1,7 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221
+from __future__ import annotations
 
 import numpy as np
 
@@ -9,13 +11,16 @@ from onnx.reference.op_run import OpRun
 
 
 class EyeLike(OpRun):
-    def _run(self, data, *args, dtype=None, k=None):  # type: ignore
+    def _run(self, data, *args, dtype=None, k=None):  # noqa: ARG002
         if dtype is None:
-            _dtype = np.float32
+            if data is None:
+                _dtype = np.float32
+            else:
+                _dtype = data.dtype
         elif dtype == TensorProto.STRING:
-            _dtype = np.str_
+            _dtype = np.str_  # type: ignore[assignment]
         else:
-            _dtype = tensor_dtype_to_np_dtype(dtype)
+            _dtype = tensor_dtype_to_np_dtype(dtype)  # type: ignore[assignment]
         shape = data.shape
         if len(shape) == 1:
             sh = (shape[0], shape[0])

@@ -1,11 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 class ReduceMin(Base):
@@ -37,6 +39,7 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_do_not_keepdims_example",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
         np.random.seed(0)
@@ -48,6 +51,7 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_do_not_keepdims_random",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
     @staticmethod
@@ -78,6 +82,7 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_keepdims_example",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
         np.random.seed(0)
@@ -89,6 +94,7 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_keepdims_random",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
     @staticmethod
@@ -114,6 +120,7 @@ class ReduceMin(Base):
             inputs=[data],
             outputs=[reduced],
             name="test_reduce_min_default_axes_keepdims_example",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
         np.random.seed(0)
@@ -125,6 +132,7 @@ class ReduceMin(Base):
             inputs=[data],
             outputs=[reduced],
             name="test_reduce_min_default_axes_keepdims_random",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
     @staticmethod
@@ -155,6 +163,7 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_negative_axes_keepdims_example",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
         )
 
         np.random.seed(0)
@@ -166,4 +175,60 @@ class ReduceMin(Base):
             inputs=[data, axes],
             outputs=[reduced],
             name="test_reduce_min_negative_axes_keepdims_random",
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
+        )
+
+    @staticmethod
+    def export_bool_inputs() -> None:
+        axes = np.array([1], dtype=np.int64)
+        keepdims = 1
+
+        node = onnx.helper.make_node(
+            "ReduceMin",
+            inputs=["data", "axes"],
+            outputs=["reduced"],
+            keepdims=keepdims,
+        )
+
+        data = np.array(
+            [[True, True], [True, False], [False, True], [False, False]],
+        )
+        reduced = np.minimum.reduce(data, axis=tuple(axes), keepdims=bool(keepdims))
+        # print(reduced)
+        # [[ True],
+        #  [False],
+        #  [False],
+        #  [False]]
+
+        expect(
+            node,
+            inputs=[data, axes],
+            outputs=[reduced],
+            name="test_reduce_min_bool_inputs",
+        )
+
+    @staticmethod
+    def export_empty_set() -> None:
+        shape = [2, 0, 4]
+        keepdims = 1
+        reduced_shape = [2, 1, 4]
+
+        node = onnx.helper.make_node(
+            "ReduceMin",
+            inputs=["data", "axes"],
+            outputs=["reduced"],
+            keepdims=keepdims,
+        )
+
+        data = np.array([], dtype=np.float32).reshape(shape)
+        axes = np.array([1], dtype=np.int64)
+        one = np.array(np.ones(reduced_shape, dtype=np.float32))
+        zero = np.array(np.zeros(reduced_shape, dtype=np.float32))
+        reduced = one / zero  # inf
+
+        expect(
+            node,
+            inputs=[data, axes],
+            outputs=[reduced],
+            name="test_reduce_min_empty_set",
         )

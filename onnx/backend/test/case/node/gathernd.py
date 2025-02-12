@@ -1,11 +1,13 @@
+# Copyright (c) ONNX Project Contributors
+#
 # SPDX-License-Identifier: Apache-2.0
+from __future__ import annotations
 
 import numpy as np
 
 import onnx
-
-from ..base import Base
-from . import expect
+from onnx.backend.test.case.base import Base
+from onnx.backend.test.case.node import expect
 
 
 def gather_nd_impl(
@@ -52,7 +54,7 @@ def gather_nd_impl(
     for batch_dim in range(reshaped_indices.shape[0]):
         for outer_dim in range(reshaped_indices.shape[1]):
             gather_index = tuple(reshaped_indices[batch_dim][outer_dim])
-            output_data_buffer.append(reshaped_data[(batch_dim,) + gather_index])
+            output_data_buffer.append(reshaped_data[(batch_dim, *gather_index)])
     return np.asarray(output_data_buffer, dtype=data.dtype).reshape(output_shape)
 
 

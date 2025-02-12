@@ -1,9 +1,11 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=R0913,R0914,W0221
+from __future__ import annotations
 
 import numpy as np
 
-from ._op_run_training import OpRunTraining
+from onnx.reference.ops.aionnx_preview_training._op_run_training import OpRunTraining
 
 
 def _apply_adam(  # type: ignore
@@ -55,7 +57,7 @@ class Adam(OpRunTraining):
         xs = []
         vs = []
         hs = []
-        for i in range(0, n):
+        for i in range(n):
             a, b, c = self._run1(  # type: ignore
                 *data[:2],
                 data[2 + i],

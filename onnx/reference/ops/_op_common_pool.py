@@ -1,26 +1,26 @@
+# Copyright (c) ONNX Project Contributors
+
 # SPDX-License-Identifier: Apache-2.0
-# pylint: disable=W0221,R0913,R0914
+from __future__ import annotations
 
 import itertools
-from typing import Optional, Tuple
 
 import numpy as np
 
 from onnx.reference.op_run import OpRun
-
-from ._op_common_indices import _get_index, _get_indices
+from onnx.reference.ops._op_common_indices import _get_index, _get_indices
 
 
 def _get_pad_shape(
     auto_pad: str,
-    input_spatial_shape: Tuple[int],
-    kernel_spatial_shape: Tuple[int],
-    strides_spatial: Tuple[int],
-    output_spatial_shape: Tuple[int],
-) -> Tuple[int]:
+    input_spatial_shape: tuple[int],
+    kernel_spatial_shape: tuple[int],
+    strides_spatial: tuple[int],
+    output_spatial_shape: tuple[int],
+) -> tuple[int]:
     pad_shape = [0] * len(input_spatial_shape)
     if auto_pad in ("SAME_UPPER", "SAME_LOWER"):
-        for i in range(len(input_spatial_shape)):  # pylint: disable=C0200
+        for i in range(len(input_spatial_shape)):
             pad_shape[i] = (
                 (output_spatial_shape[i] - 1) * strides_spatial[i]
                 + kernel_spatial_shape[i]
@@ -40,18 +40,18 @@ def _get_pad_shape(
 
 def _get_output_shape_no_ceil(
     auto_pad: str,
-    input_spatial_shape: Tuple[int],
-    kernel_spatial_shape: Tuple[int],
-    strides_spatial: Tuple[int],
-) -> Tuple[int]:
+    input_spatial_shape: tuple[int],
+    kernel_spatial_shape: tuple[int],
+    strides_spatial: tuple[int],
+) -> tuple[int]:
     out_shape = [0] * len(input_spatial_shape)
     if auto_pad in ("SAME_UPPER", "SAME_LOWER"):
-        for i in range(len(input_spatial_shape)):  # pylint: disable=C0200
+        for i in range(len(input_spatial_shape)):
             out_shape[i] = int(
                 np.ceil(float(input_spatial_shape[i]) / float(strides_spatial[i]))
             )
     elif auto_pad == "VALID":
-        for i in range(len(input_spatial_shape)):  # pylint: disable=C0200
+        for i in range(len(input_spatial_shape)):
             out_shape[i] = int(
                 np.ceil(
                     float(input_spatial_shape[i] - (kernel_spatial_shape[i] - 1))
@@ -63,12 +63,12 @@ def _get_output_shape_no_ceil(
 
 def _get_output_shape(
     auto_pad: str,
-    input_spatial_shape: Tuple[int],
-    kernel_spatial_shape: Tuple[int],
-    strides_spatial: Tuple[int],
-    pad_shape: Optional[Tuple[int]] = None,
-    ceil_mode: Optional[int] = 0,
-) -> Tuple[int]:
+    input_spatial_shape: tuple[int],
+    kernel_spatial_shape: tuple[int],
+    strides_spatial: tuple[int],
+    pad_shape: tuple[int] | None = None,
+    ceil_mode: int | None = 0,
+) -> tuple[int]:
     if not ceil_mode:
         out_shape = _get_output_shape_no_ceil(
             auto_pad, input_spatial_shape, kernel_spatial_shape, strides_spatial
@@ -77,7 +77,7 @@ def _get_output_shape(
         round_fct = np.ceil if ceil_mode else np.floor
         out_shape = [0] * len(input_spatial_shape)  # type: ignore
         if auto_pad in ("SAME_UPPER", "SAME_LOWER"):
-            for i in range(len(input_spatial_shape)):  # pylint: disable=C0200
+            for i in range(len(input_spatial_shape)):
                 out_shape[i] = int(  # type: ignore
                     round_fct(float(input_spatial_shape[i]) / float(strides_spatial[i]))  # type: ignore
                 )
@@ -87,7 +87,7 @@ def _get_output_shape(
                     "pad_shape cannot be None if auto_pad is "
                     "'VALID' and ceil_mode is 1."
                 )
-            for i in range(len(input_spatial_shape)):  # pylint: disable=C0200
+            for i in range(len(input_spatial_shape)):
                 out_shape[i] = int(  # type: ignore
                     round_fct(  # type: ignore
                         float(
@@ -118,16 +118,16 @@ def _get_output_shape(
 
 def _pool(
     padded: np.ndarray,
-    x_shape: Tuple[int],
-    kernel_shape: Tuple[int],
-    strides_shape: Tuple[int],
-    out_shape: Tuple[int],
-    pad_shape: Tuple[int],
+    x_shape: tuple[int],
+    kernel_shape: tuple[int],
+    strides_shape: tuple[int],
+    out_shape: tuple[int],
+    pad_shape: tuple[int],
     pooling_type: str,
-    count_include_pad: Optional[int] = 0,
-    ceil_mode: Optional[int] = 0,
+    count_include_pad: int | None = 0,
+    ceil_mode: int | None = 0,
     indices: bool = False,
-    pads: Optional[np.ndarray] = None,
+    pads: np.ndarray | None = None,
 ) -> np.ndarray:
     if pooling_type == "AVG":
         fpool = np.average
@@ -138,7 +138,7 @@ def _pool(
             f"Pooling type {pooling_type!r} does not support. Should be AVG, MAX."
         )
     spatial_size = len(x_shape) - 2
-    y = np.zeros([x_shape[0], x_shape[1]] + list(out_shape))  # type: ignore
+    y = np.zeros([x_shape[0], x_shape[1], *list(out_shape)])  # type: ignore
     if indices:
         z = np.full(y.shape, fill_value=-1, dtype=np.int64)
     round_fct = np.ceil if ceil_mode else np.floor
@@ -171,7 +171,7 @@ def _pool(
         for i in listi2:
             try:
                 values.append(window[i])
-            except IndexError:
+            except IndexError:  # noqa: PERF203
                 continue
         window_vals = np.array(values)
 
@@ -209,16 +209,9 @@ class CommonPool(OpRun):
         dilations=None,
         kernel_shape=None,
         pads=None,
-        storage_order=None,  # pylint: disable=W0613
+        storage_order=None,  # noqa: ARG002
         strides=None,
     ):
-
-        auto_pad = auto_pad or self.auto_pad  # type: ignore
-        ceil_mode = ceil_mode or self.ceil_mode  # type: ignore
-        kernel_shape = kernel_shape or self.kernel_shape  # type: ignore
-        pads = pads or self.pads  # type: ignore
-        strides = strides or self.strides  # type: ignore
-
         if pooling_type == "MAX" and dilations is None:
             dilations = [1 for s in kernel_shape]
         if pads is None:
@@ -252,7 +245,12 @@ class CommonPool(OpRun):
         if auto_pad in ("SAME_LOWER", "SAME_UPPER"):
             const = np.nan if count_include_pad == 0 else 0
             out_shape = _get_output_shape(
-                auto_pad, x_shape, kernel_shape, strides, pad_shape, ceil_mode  # type: ignore
+                auto_pad,
+                x_shape,
+                kernel_shape,
+                strides,
+                pad_shape,
+                ceil_mode,  # type: ignore
             )
             pad_shape = _get_pad_shape(  # type: ignore
                 auto_pad, x_shape, kernel_shape, strides, out_shape
@@ -275,7 +273,12 @@ class CommonPool(OpRun):
             )
         else:
             out_shape = _get_output_shape(
-                auto_pad, x_shape, kernel_shape, strides, pad_shape, ceil_mode  # type: ignore
+                auto_pad,
+                x_shape,
+                kernel_shape,
+                strides,
+                pad_shape,
+                ceil_mode,  # type: ignore
             )
 
         n_dims = len(pads) // 2
